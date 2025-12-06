@@ -20,8 +20,12 @@ declare global {
       initializeWhatsapp: () => Promise<{ success: boolean; status: string; error?: string }>
       getWhatsappStatus: () => Promise<string>
       disconnectWhatsapp: () => Promise<{ success: boolean; error?: string }>
+      deleteWhatsappAuth: () => Promise<{ success: boolean; error?: string }>
       onWhatsappStatus: (
-        callback: (event: unknown, data: { status: string; data?: { qr?: string } }) => void
+        callback: (
+          event: Electron.IpcRendererEvent,
+          data: { status: string; data?: { qr?: string } }
+        ) => void
       ) => () => void
     }
   }

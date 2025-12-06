@@ -17,6 +17,7 @@ import {
   disconnectWhatsApp,
   setMainWindow
 } from '../../server/utils/whatsapp'
+import { deleteWhatsappAuth } from '../../server/utils/deleteWhatsappAuth'
 
 let adminServer: Server | null = null
 let mainWindow: BrowserWindow | null = null
@@ -233,6 +234,19 @@ ipcMain.handle('disconnect-whatsapp', async () => {
     return { success: true }
   } catch (error) {
     console.error('Error disconnecting WhatsApp:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+})
+
+ipcMain.handle('delete-whatsapp-auth', async () => {
+  try {
+    await deleteWhatsappAuth()
+    return { success: true }
+  } catch (error) {
+    console.error('Error deleting WhatsApp auth:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)

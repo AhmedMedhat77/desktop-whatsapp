@@ -26,8 +26,10 @@ function HomeScreen(): React.ReactNode {
   const [isLoading, setIsLoading] = useState({
     server: false,
     database: false,
-    whatsapp: false
+    whatsapp: false,
+    deleteCache: false
   })
+  const [deleteCacheMessage, setDeleteCacheMessage] = useState<string | null>(null)
 
   const checkHealth = useCallback(async (): Promise<void> => {
     try {
@@ -141,6 +143,39 @@ function HomeScreen(): React.ReactNode {
     }
   }
 
+  const handleDeleteCache = async (): Promise<void> => {
+    if (!confirm('Are you sure you want to delete WhatsApp auth and cache? This will require re-authentication.')) {
+      return
+    }
+
+    if (!window.api || typeof window.api.deleteWhatsappAuth !== 'function') {
+      setDeleteCacheMessage('Delete cache function not available. Please restart the app.')
+      setTimeout(() => setDeleteCacheMessage(null), 5000)
+      return
+    }
+
+    setIsLoading((prev) => ({ ...prev, deleteCache: true }))
+    setDeleteCacheMessage(null)
+    try {
+      const response = await window.api.deleteWhatsappAuth()
+      if (response.success) {
+        setDeleteCacheMessage('Cache deleted successfully!')
+        setWhatsappStatus('disconnected')
+        setWhatsappQrCode(null)
+        setTimeout(() => setDeleteCacheMessage(null), 5000)
+      } else {
+        setDeleteCacheMessage(response.error || 'Failed to delete cache')
+        setTimeout(() => setDeleteCacheMessage(null), 5000)
+      }
+    } catch (error) {
+      console.error('Error deleting cache:', error)
+      setDeleteCacheMessage('Error deleting cache. Please restart the app and try again.')
+      setTimeout(() => setDeleteCacheMessage(null), 5000)
+    } finally {
+      setIsLoading((prev) => ({ ...prev, deleteCache: false }))
+    }
+  }
+
   const checkWhatsappStatus = useCallback(async (): Promise<void> => {
     try {
       const status = await window.api.getWhatsappStatus()
@@ -169,6 +204,11 @@ function HomeScreen(): React.ReactNode {
 
   // Listen for WhatsApp status updates
   useEffect(() => {
+    if (!window.api || typeof window.api.onWhatsappStatus !== 'function') {
+      console.error('window.api.onWhatsappStatus is not available')
+      return
+    }
+
     const cleanup = window.api.onWhatsappStatus((_event, data) => {
       setWhatsappStatus(data.status as WhatsAppStatus)
       if (data.data?.qr) {
@@ -257,6 +297,29 @@ function HomeScreen(): React.ReactNode {
                 <div className="bg-white p-4 rounded-lg shadow-md">
                   <QRCodeSVG value={whatsappQrCode} size={256} level="H" />
                 </div>
+              </div>
+            )}
+
+            {/* Delete Cache Button */}
+            <Button
+              type="button"
+              onClick={handleDeleteCache}
+              isLoading={isLoading.deleteCache}
+              className="w-full bg-orange-500 hover:bg-orange-600"
+            >
+              Delete WhatsApp Auth & Cache
+            </Button>
+
+            {/* Delete Cache Message */}
+            {deleteCacheMessage && (
+              <div
+                className={`p-3 rounded-md text-sm ${
+                  deleteCacheMessage.includes('successfully')
+                    ? 'bg-green-100 text-green-700 border border-green-300'
+                    : 'bg-red-100 text-red-700 border border-red-300'
+                }`}
+              >
+                {deleteCacheMessage}
               </div>
             )}
           </div>

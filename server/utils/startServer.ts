@@ -1,7 +1,7 @@
-import express from 'express'
 import cors from 'cors'
-import { Server } from 'http'
 import { config } from 'dotenv'
+import express from 'express'
+import { Server } from 'http'
 config()
 
 const PORT = process.env.PORT || 3000
@@ -15,7 +15,6 @@ export const startServer = async (server: Server | null): Promise<Server> => {
   }
   // connect to database
   // await connectToDB()
-
   app.use(
     cors({
       origin: '*',

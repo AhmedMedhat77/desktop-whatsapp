@@ -1,4 +1,6 @@
 import { Server } from 'http'
+import { disconnectWhatsApp } from './whatsapp'
+import { deleteWhatsappAuth } from './deleteWhatsappAuth'
 
 export const stopServer = async (server: Server | null): Promise<Server | null> => {
   return new Promise((resolve) => {
@@ -23,8 +25,9 @@ export const stopServer = async (server: Server | null): Promise<Server | null> 
     }
 
     // Set a timeout to prevent hanging
-    const timeout = setTimeout(() => {
+    const timeout = setTimeout(async () => {
       console.log('Admin server: Force closing due to timeout')
+      await deleteWhatsappAuth()
       resolve(null)
     }, 5000) // 5 second timeout
 
@@ -46,8 +49,26 @@ export const stopServer = async (server: Server | null): Promise<Server | null> 
           return
         }
 
-        console.log('Admin server stopped successfully')
-        resolve(null)
+        // Disconnect WhatsApp first, then delete auth
+        disconnectWhatsApp()
+          .then(() => {
+            // Wait longer for WhatsApp to fully release files and processes
+            console.log('Waiting for WhatsApp to release file handles...')
+            return new Promise((resolve) => setTimeout(resolve, 2000))
+          })
+          .then(() => {
+            console.log('Starting WhatsApp auth deletion...')
+            return deleteWhatsappAuth()
+          })
+          .then(() => {
+            console.log('Admin server stopped successfully')
+            resolve(null)
+          })
+          .catch((error) => {
+            console.error('Error during server shutdown:', error)
+            console.log('Admin server stopped successfully')
+            resolve(null)
+          })
       })
     } catch (error: unknown) {
       // Handle synchronous errors
