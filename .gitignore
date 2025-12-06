@@ -1,0 +1,16 @@
+node_modules
+dist
+out
+.DS_Store
+.eslintcache
+*.log*
+.env
+.server-config.json
+
+.wwebjs_cache
+whatsapp-auth
+
+.vscode
+.tanstack
+build
+out
