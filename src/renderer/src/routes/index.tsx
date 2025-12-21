@@ -164,7 +164,11 @@ function HomeScreen(): React.ReactNode {
   }
 
   const handleDeleteCache = async (): Promise<void> => {
-    if (!confirm('Are you sure you want to delete WhatsApp auth and cache? This will require re-authentication.')) {
+    if (
+      !confirm(
+        'Are you sure you want to delete WhatsApp auth and cache? This will require re-authentication.'
+      )
+    ) {
       return
     }
 

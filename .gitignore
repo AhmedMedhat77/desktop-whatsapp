@@ -14,3 +14,4 @@ whatsapp-auth
 .tanstack
 build
 out
+.wwebjs_auth*

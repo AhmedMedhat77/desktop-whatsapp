@@ -12,12 +12,23 @@ files:
 asarUnpack:
   - resources/**
 win:
+  target:
+    - target: nsis
+      arch:
+        - x64
   executableName: desktop-whatsapp
+  icon: build/icon.ico
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  createStartMenuShortcut: true
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
