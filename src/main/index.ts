@@ -1,23 +1,23 @@
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { Server } from 'http'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
-import { Server } from 'http'
-import { startServer, stopServer, checkHealth } from '../../server/utils'
 import {
+  closeConnection,
   connectToDB,
   createDbConfigFile,
   IConfig,
-  closeConnection,
   isDatabaseConnected
 } from '../../server/db'
+import { checkHealth, startServer, stopServer } from '../../server/utils'
+import { deleteWhatsappAuth } from '../../server/utils/deleteWhatsappAuth'
 import {
-  initializeWhatsapp,
-  getWhatsAppStatus,
   disconnectWhatsApp,
+  getWhatsAppStatus,
+  initializeWhatsapp,
   setMainWindow
 } from '../../server/utils/whatsapp'
-import { deleteWhatsappAuth } from '../../server/utils/deleteWhatsappAuth'
 
 let adminServer: Server | null = null
 let mainWindow: BrowserWindow | null = null
@@ -186,11 +186,15 @@ ipcMain.handle('create-db-config-file', async (_, config: IConfig) => {
 // ----------- CONNECT TO DATABASE ----------- //
 ipcMain.handle('connect-to-db', async () => {
   try {
-    const isConnected = await connectToDB()
-    return isConnected
+    const result = await connectToDB()
+    return result
   } catch (error) {
     console.error('Error in connect-to-db handler:', error)
-    return false
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+    return {
+      success: false,
+      error: errorMessage
+    }
   }
 })
 
@@ -199,8 +203,8 @@ ipcMain.handle('check-db-status', async () => {
   try {
     // If we have a pool, test if it's still connected
     if (isDatabaseConnected()) {
-      const isConnected = await connectToDB()
-      return isConnected
+      const result = await connectToDB()
+      return result.success
     }
     return false
   } catch (error) {

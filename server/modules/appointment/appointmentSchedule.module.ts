@@ -1,0 +1,74 @@
+import { scheduleJob } from 'node-schedule'
+import { getConnection } from '../../db'
+import { sendMessageToPhone } from '../../utils/whatsapp'
+import { companyHeader } from '../../constants/companyHeader'
+import { formatDbDate, formatDbTime } from '../../utils/formatDb'
+import { QUERIES } from '../../constants/queries'
+
+let initialized = false
+const sentReminders = new Set<string>() // Track sent reminders by unique key
+
+scheduleJob('*/1 * * * * *', async () => {
+  try {
+    const pool = await getConnection()
+    // Get all appointments using the provided query
+    const allAppointmentsResult = await pool.request().query(QUERIES.appointments)
+    const allAppointments = allAppointmentsResult.recordset
+    const company = await companyHeader.getCompanyHeader()
+    const now = new Date()
+    const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000)
+
+    if (!initialized) {
+      // On first run, just mark all upcoming appointments as already reminded
+      for (const appointment of allAppointments) {
+        const dateStr = appointment.TheDate?.toString() || ''
+        const timeStr = appointment.TheTime?.toString().padStart(4, '0') || ''
+        const key = `${appointment.PatientID}_${appointment.BranchID}_${dateStr}_${timeStr}`
+        sentReminders.add(key)
+      }
+      initialized = true
+      return
+    }
+
+    for (const appointment of allAppointments) {
+      // Parse date and time to a JS Date object
+      const dateStr = appointment.TheDate?.toString() || ''
+      const timeStr = appointment.TheTime?.toString().padStart(4, '0') || ''
+      let appointmentDate: Date | null = null
+      if (dateStr.length === 8 && timeStr.length === 4) {
+        appointmentDate = new Date(
+          Number(dateStr.slice(0, 4)),
+          Number(dateStr.slice(4, 6)) - 1,
+          Number(dateStr.slice(6, 8)),
+          Number(timeStr.slice(0, 2)),
+          Number(timeStr.slice(2, 4))
+        )
+      }
+      let isWithin2Hours = false
+      if (appointmentDate) {
+        isWithin2Hours = appointmentDate > now && appointmentDate <= twoHoursLater
+      }
+      const key = `${appointment.PatientID}_${appointment.BranchID}_${dateStr}_${timeStr}`
+      if (isWithin2Hours && !sentReminders.has(key)) {
+        const formattedDate = formatDbDate(appointment.TheDate)
+        const formattedTime = formatDbTime(appointment.TheTime)
+        const message = `
+مرحباً ${appointment.Name || 'مريض'}،
+
+تذكير: لديك موعد قادم مع الدكتور/ة ${appointment.DoctorArbName || 'غير محدد'} في قسم ${appointment.SpecialtyArbName || 'غير محدد'}.
+📅 التاريخ: ${formattedDate}
+⏰ الوقت: ${formattedTime}
+${company?.CompanyArbName ? `في *${company.CompanyArbName}*` : ''}
+${company?.ArbAddress ? `📍 العنوان: ${company.ArbAddress}` : ''}
+${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
+
+نتمنى لك الصحة والعافية 🌹
+        `.trim()
+        await sendMessageToPhone(appointment.Number, message)
+        sentReminders.add(key)
+      }
+    }
+  } catch (err) {
+    console.error('Error watching Appointments:', err)
+  }
+})

@@ -6,7 +6,12 @@ export { sql }
 // Global connection pool manager
 let dbPool: sql.ConnectionPool | null = null
 
-export const connectToDB = async (): Promise<boolean> => {
+export interface ConnectionResult {
+  success: boolean
+  error?: string
+}
+
+export const connectToDB = async (): Promise<ConnectionResult> => {
   try {
     // If already connected, test the existing connection
     if (dbPool) {
@@ -14,7 +19,7 @@ export const connectToDB = async (): Promise<boolean> => {
         const result = await dbPool.request().query('SELECT 1 as test')
         if (result && result.recordset) {
           console.log('Database connection verified (existing pool)')
-          return true
+          return { success: true }
         }
       } catch (error) {
         // Connection is dead, close it and create a new one
@@ -31,7 +36,17 @@ export const connectToDB = async (): Promise<boolean> => {
 
     // Create new connection if needed
     if (!dbPool) {
-      const connectionConfig = await getDbConfigFile()
+      let connectionConfig
+      try {
+        connectionConfig = await getDbConfigFile()
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        console.error('Error reading database config:', errorMessage)
+        return {
+          success: false,
+          error: `Configuration error: ${errorMessage}. Please configure the database connection first.`
+        }
+      }
 
       const mssqlConfig: sql.config = {
         user: connectionConfig.user,
@@ -46,20 +61,57 @@ export const connectToDB = async (): Promise<boolean> => {
         requestTimeout: 5000
       }
 
-      dbPool = await sql.connect(mssqlConfig)
+      try {
+        dbPool = await sql.connect(mssqlConfig)
 
-      // Test the connection with a simple query
-      const result = await dbPool.request().query('SELECT 1 as test')
+        // Test the connection with a simple query
+        const result = await dbPool.request().query('SELECT 1 as test')
 
-      if (result && result.recordset) {
-        console.log('Database connection successful')
-        return true
+        if (result && result.recordset) {
+          console.log('Database connection successful')
+          return { success: true }
+        }
+
+        return {
+          success: false,
+          error: 'Connection test failed: No data returned from test query'
+        }
+      } catch (connectError) {
+        // Clean up on connection error
+        if (dbPool) {
+          try {
+            await dbPool.close()
+          } catch {
+            // Ignore close errors
+          }
+          dbPool = null
+        }
+
+        // Extract user-friendly error message
+        let errorMessage = 'Unknown error'
+        if (connectError instanceof Error) {
+          errorMessage = connectError.message
+          // Provide more user-friendly messages for common errors
+          if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('timeout')) {
+            errorMessage = `Cannot connect to server "${connectionConfig.server}". Please check if the server is running and accessible.`
+          } else if (errorMessage.includes('Login failed')) {
+            errorMessage = 'Authentication failed. Please check your username and password.'
+          } else if (errorMessage.includes('Cannot open database')) {
+            errorMessage = `Database "${connectionConfig.database}" not found or access denied.`
+          } else if (errorMessage.includes('ENOTFOUND')) {
+            errorMessage = `Server "${connectionConfig.server}" not found. Please check the server address.`
+          }
+        }
+
+        console.error('Error connecting to database:', connectError)
+        return {
+          success: false,
+          error: errorMessage
+        }
       }
-
-      return false
     }
 
-    return true
+    return { success: true }
   } catch (error) {
     console.error('Error connecting to database:', error)
     // Clean up on error
@@ -71,7 +123,12 @@ export const connectToDB = async (): Promise<boolean> => {
       }
       dbPool = null
     }
-    return false
+
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+    return {
+      success: false,
+      error: errorMessage
+    }
   }
 }
 

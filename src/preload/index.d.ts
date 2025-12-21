@@ -15,7 +15,7 @@ declare global {
       stopServer: () => Promise<string>
       checkHealth: () => Promise<boolean>
       createDbConfigFile: (config: IDatabaseForm) => Promise<boolean>
-      connectToDB: () => Promise<boolean>
+      connectToDB: () => Promise<{ success: boolean; error?: string }>
       checkDbStatus: () => Promise<boolean>
       initializeWhatsapp: () => Promise<{ success: boolean; status: string; error?: string }>
       getWhatsappStatus: () => Promise<string>

@@ -21,6 +21,7 @@ function HomeScreen(): React.ReactNode {
   const [serverStatus, setServerStatus] = useState<'online' | 'offline' | 'pending'>('pending')
   const [isServerHealthy, setIsServerHealthy] = useState<boolean>(false)
   const [isDatabaseConnected, setIsDatabaseConnected] = useState<boolean>(false)
+  const [databaseError, setDatabaseError] = useState<string | null>(null)
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>('disconnected')
   const [whatsappQrCode, setWhatsappQrCode] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState({
@@ -52,6 +53,9 @@ function HomeScreen(): React.ReactNode {
     try {
       const response = await window.api.checkDbStatus()
       setIsDatabaseConnected(response)
+      if (response) {
+        setDatabaseError(null)
+      }
     } catch (error) {
       console.error('Database connection check failed:', error)
       setIsDatabaseConnected(false)
@@ -60,12 +64,28 @@ function HomeScreen(): React.ReactNode {
 
   const handleConnectToDatabase = async (): Promise<void> => {
     setIsLoading((prev) => ({ ...prev, database: true }))
+    setDatabaseError(null)
     try {
       const response = await window.api.connectToDB()
-      setIsDatabaseConnected(response)
+      if (response && typeof response === 'object' && 'success' in response) {
+        setIsDatabaseConnected(response.success)
+        if (!response.success && response.error) {
+          setDatabaseError(response.error)
+        } else if (response.success) {
+          setDatabaseError(null)
+        }
+      } else {
+        // Fallback for boolean response (backward compatibility)
+        setIsDatabaseConnected(Boolean(response))
+        if (!response) {
+          setDatabaseError('Failed to connect to database')
+        }
+      }
     } catch (error) {
       console.error('Error connecting to database:', error)
       setIsDatabaseConnected(false)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      setDatabaseError(errorMessage)
     } finally {
       setIsLoading((prev) => ({ ...prev, database: false }))
     }
@@ -351,16 +371,26 @@ function HomeScreen(): React.ReactNode {
             </div>
 
             {/* Database Connection */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Status status={isDatabaseConnected ? 'online' : 'offline'} size={16} />
-                <span className="font-medium">Database:</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Status
+                    status={isDatabaseConnected ? 'online' : databaseError ? 'error' : 'offline'}
+                    size={16}
+                  />
+                  <span className="font-medium">Database:</span>
+                </div>
+                <span
+                  className={`font-semibold ${isDatabaseConnected ? 'text-green-600' : 'text-red-600'}`}
+                >
+                  {isDatabaseConnected ? 'Connected' : 'Disconnected'}
+                </span>
               </div>
-              <span
-                className={`font-semibold ${isDatabaseConnected ? 'text-green-600' : 'text-red-600'}`}
-              >
-                {isDatabaseConnected ? 'Connected' : 'Disconnected'}
-              </span>
+              {databaseError && (
+                <div className="ml-7 rounded-md bg-red-50 border border-red-200 p-2">
+                  <p className="text-sm text-red-800">{databaseError}</p>
+                </div>
+              )}
             </div>
 
             {/* WhatsApp Status */}

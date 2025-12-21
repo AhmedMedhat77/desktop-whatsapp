@@ -1,4 +1,6 @@
 export * from './checkHealth'
-export * from './checkHealth'
+export * from './formatDb'
+export * from './phoneNumber'
 export * from './startServer'
 export * from './stopServer'
+export * from './whatsapp'
