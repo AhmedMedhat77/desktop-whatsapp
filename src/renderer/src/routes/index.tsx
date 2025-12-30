@@ -1,8 +1,22 @@
 import Button from '@renderer/components/Button'
 import Status from '@renderer/components/Status'
+import Toast from '@renderer/components/Toast'
+import { useToast } from '@renderer/hooks/useToast'
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
+import {
+  Server,
+  Database,
+  MessageCircle,
+  Power,
+  PowerOff,
+  RefreshCw,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  AlertCircle
+} from 'lucide-react'
 
 type WhatsAppStatus =
   | 'disconnected'
@@ -31,6 +45,7 @@ function HomeScreen(): React.ReactNode {
     deleteCache: false
   })
   const [deleteCacheMessage, setDeleteCacheMessage] = useState<string | null>(null)
+  const { toasts, removeToast, success, error: showError } = useToast()
 
   const checkHealth = useCallback(async (): Promise<void> => {
     try {
@@ -71,14 +86,19 @@ function HomeScreen(): React.ReactNode {
         setIsDatabaseConnected(response.success)
         if (!response.success && response.error) {
           setDatabaseError(response.error)
+          showError(response.error)
         } else if (response.success) {
           setDatabaseError(null)
+          success('Database connected successfully!')
         }
       } else {
         // Fallback for boolean response (backward compatibility)
         setIsDatabaseConnected(Boolean(response))
         if (!response) {
           setDatabaseError('Failed to connect to database')
+          showError('Failed to connect to database')
+        } else {
+          success('Database connected successfully!')
         }
       }
     } catch (error) {
@@ -86,6 +106,7 @@ function HomeScreen(): React.ReactNode {
       setIsDatabaseConnected(false)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
       setDatabaseError(errorMessage)
+      showError(errorMessage)
     } finally {
       setIsLoading((prev) => ({ ...prev, database: false }))
     }
@@ -98,12 +119,15 @@ function HomeScreen(): React.ReactNode {
       if (response === 'Server already running' || response === 'Server started') {
         setServerStatus('online')
         await checkHealth()
+        success('Server started successfully!')
       } else {
         setServerStatus('offline')
+        showError('Failed to start server')
       }
     } catch (error) {
       console.error('Error starting server:', error)
       setServerStatus('offline')
+      showError('Error starting server')
     } finally {
       setIsLoading((prev) => ({ ...prev, server: false }))
     }
@@ -122,12 +146,14 @@ function HomeScreen(): React.ReactNode {
         setIsServerHealthy(false)
         // Database connection is closed when server stops
         setIsDatabaseConnected(false)
+        success('Server stopped successfully')
       }
     } catch (error) {
       console.error('Error stopping server:', error)
       setServerStatus('offline')
       setIsServerHealthy(false)
       setIsDatabaseConnected(false)
+      showError('Error stopping server')
     } finally {
       setIsLoading((prev) => ({ ...prev, server: false }))
     }
@@ -186,9 +212,12 @@ function HomeScreen(): React.ReactNode {
         setDeleteCacheMessage('Cache deleted successfully!')
         setWhatsappStatus('disconnected')
         setWhatsappQrCode(null)
+        success('WhatsApp cache deleted successfully!')
         setTimeout(() => setDeleteCacheMessage(null), 5000)
       } else {
-        setDeleteCacheMessage(response.error || 'Failed to delete cache')
+        const errorMsg = response.error || 'Failed to delete cache'
+        setDeleteCacheMessage(errorMsg)
+        showError(errorMsg)
         setTimeout(() => setDeleteCacheMessage(null), 5000)
       }
     } catch (error) {
@@ -252,20 +281,46 @@ function HomeScreen(): React.ReactNode {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4">
-      <div className="w-full max-w-2xl space-y-6">
-        <h1 className="text-3xl font-bold text-center text-primary-color">Server Control Panel</h1>
+    <div className="flex flex-col min-h-screen bg-gray-50 p-4 pt-20">
+      {/* Toast Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
+      </div>
 
-        <div className="bg-white shadow-2xl rounded-xl p-6 space-y-4">
-          {/* Server Controls */}
+      <div className="w-full max-w-5xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center justify-center gap-3">
+            <Server className="w-10 h-10 text-blue-600" />
+            Control Panel
+          </h1>
+          <p className="text-gray-600">Manage your WhatsApp messaging system</p>
+        </div>
+
+        {/* Server Controls Card */}
+        <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-200">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <Server className="w-6 h-6 text-blue-600" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Server Controls</h2>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Button
               disabled={serverStatus === 'online' || isLoading.server}
               type="button"
               onClick={handleStartServer}
               isLoading={isLoading.server}
-              className="bg-green-500 hover:bg-green-600 disabled:bg-gray-300"
+              className="bg-green-500 hover:bg-green-600 disabled:bg-gray-300 flex items-center justify-center gap-2"
             >
+              <Power className="w-4 h-4" />
               Start Server
             </Button>
             <Button
@@ -273,31 +328,50 @@ function HomeScreen(): React.ReactNode {
               type="button"
               onClick={handleStopServer}
               isLoading={isLoading.server}
-              className="bg-red-500 hover:bg-red-600 disabled:bg-gray-300"
+              className="bg-red-500 hover:bg-red-600 disabled:bg-gray-300 flex items-center justify-center gap-2"
             >
+              <PowerOff className="w-4 h-4" />
               Stop Server
             </Button>
           </div>
+        </div>
 
-          {/* Database Connection */}
+        {/* Database Connection Card */}
+        <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-200">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-indigo-100 rounded-lg">
+              <Database className="w-6 h-6 text-indigo-600" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Database Connection</h2>
+          </div>
           <Button
             type="button"
             onClick={handleConnectToDatabase}
             isLoading={isLoading.database}
-            className="w-full bg-blue-500 hover:bg-blue-600"
+            className="w-full bg-indigo-500 hover:bg-indigo-600 flex items-center justify-center gap-2"
           >
-            Connect to Database
+            <Database className="w-4 h-4" />
+            {isDatabaseConnected ? 'Reconnect Database' : 'Connect to Database'}
           </Button>
+        </div>
 
-          {/* WhatsApp Connection */}
-          <div className="space-y-3">
+        {/* WhatsApp Connection Card */}
+        <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-200">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <MessageCircle className="w-6 h-6 text-green-600" />
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">WhatsApp Connection</h2>
+          </div>
+          <div className="space-y-4">
             {whatsappStatus === 'disconnected' || whatsappStatus === 'disconnected_error' ? (
               <Button
                 type="button"
                 onClick={handleInitializeWhatsapp}
                 isLoading={isLoading.whatsapp}
-                className="w-full bg-green-500 hover:bg-green-600"
+                className="w-full bg-green-500 hover:bg-green-600 flex items-center justify-center gap-2"
               >
+                <MessageCircle className="w-4 h-4" />
                 Connect WhatsApp
               </Button>
             ) : (
@@ -306,20 +380,27 @@ function HomeScreen(): React.ReactNode {
                 onClick={handleDisconnectWhatsapp}
                 isLoading={isLoading.whatsapp}
                 disabled={whatsappStatus === 'ready'}
-                className="w-full bg-red-500 hover:bg-red-600 disabled:bg-gray-300"
+                className="w-full bg-red-500 hover:bg-red-600 disabled:bg-gray-300 flex items-center justify-center gap-2"
               >
+                <XCircle className="w-4 h-4" />
                 Disconnect WhatsApp
               </Button>
             )}
 
             {/* QR Code Display */}
             {whatsappQrCode && (
-              <div className="flex flex-col items-center p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                <p className="text-sm font-medium text-gray-700 mb-3">
-                  Scan this QR code with WhatsApp
+              <div className="flex flex-col items-center p-6 bg-green-50 rounded-xl border-2 border-green-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertCircle className="w-5 h-5 text-green-600" />
+                  <p className="text-sm font-semibold text-green-900">
+                    Scan QR Code with WhatsApp
+                  </p>
+                </div>
+                <p className="text-xs text-green-700 mb-4">
+                  Open WhatsApp on your phone → Settings → Linked Devices → Link a Device
                 </p>
-                <div className="bg-white p-4 rounded-lg shadow-md">
-                  <QRCodeSVG value={whatsappQrCode} size={256} level="H" />
+                <div className="bg-white p-6 rounded-xl shadow-lg border-2 border-green-300">
+                  <QRCodeSVG value={whatsappQrCode} size={280} level="H" />
                 </div>
               </div>
             )}
@@ -329,77 +410,119 @@ function HomeScreen(): React.ReactNode {
               type="button"
               onClick={handleDeleteCache}
               isLoading={isLoading.deleteCache}
-              className="w-full bg-orange-500 hover:bg-orange-600"
+              className="w-full bg-orange-500 hover:bg-orange-600 flex items-center justify-center gap-2"
             >
+              <Trash2 className="w-4 h-4" />
               Delete WhatsApp Auth & Cache
             </Button>
 
             {/* Delete Cache Message */}
             {deleteCacheMessage && (
               <div
-                className={`p-3 rounded-md text-sm ${
+                className={`p-4 rounded-lg border-2 ${
                   deleteCacheMessage.includes('successfully')
-                    ? 'bg-green-100 text-green-700 border border-green-300'
-                    : 'bg-red-100 text-red-700 border border-red-300'
+                    ? 'bg-green-50 text-green-800 border-green-300'
+                    : 'bg-red-50 text-red-800 border-red-300'
                 }`}
               >
-                {deleteCacheMessage}
+                <div className="flex items-center gap-2">
+                  {deleteCacheMessage.includes('successfully') ? (
+                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <XCircle className="w-5 h-5 text-red-600" />
+                  )}
+                  <p className="text-sm font-medium">{deleteCacheMessage}</p>
+                </div>
               </div>
             )}
           </div>
+        </div>
 
-          {/* Status Indicators */}
-          <div className="space-y-3 pt-4 border-t border-gray-200">
+        {/* System Status Card */}
+        <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-200">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <RefreshCw className="w-6 h-6 text-purple-600" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900">System Status</h2>
+            </div>
+            <button
+              onClick={() => {
+                checkHealth()
+                checkDatabaseConnection()
+                checkWhatsappStatus()
+              }}
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Refresh Status"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Server Status */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Status status={serverStatus} size={16} />
-                <span className="font-medium">Server Status:</span>
-              </div>
-              <span className={`font-semibold ${statusTextColor[serverStatus]}`}>
-                {serverStatus.charAt(0).toUpperCase() + serverStatus.slice(1)}
-              </span>
-            </div>
-
-            {/* Server Health */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Status status={isServerHealthy ? 'online' : 'offline'} size={16} />
-                <span className="font-medium">Server Health:</span>
-              </div>
-              <span
-                className={`font-semibold ${isServerHealthy ? 'text-green-600' : 'text-red-600'}`}
-              >
-                {isServerHealthy ? 'Healthy' : 'Unhealthy'}
-              </span>
-            </div>
-
-            {/* Database Connection */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Status
-                    status={isDatabaseConnected ? 'online' : databaseError ? 'error' : 'offline'}
-                    size={16}
-                  />
-                  <span className="font-medium">Database:</span>
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Server className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm font-medium text-gray-700">Server</span>
                 </div>
+                <Status status={serverStatus} size={14} />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Status</span>
+                <span className={`text-sm font-semibold ${statusTextColor[serverStatus]}`}>
+                  {serverStatus.charAt(0).toUpperCase() + serverStatus.slice(1)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-xs text-gray-500">Health</span>
+                <div className="flex items-center gap-2">
+                  <Status status={isServerHealthy ? 'online' : 'offline'} size={12} />
+                  <span
+                    className={`text-sm font-semibold ${isServerHealthy ? 'text-green-600' : 'text-red-600'}`}
+                  >
+                    {isServerHealthy ? 'Healthy' : 'Unhealthy'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Database Status */}
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Database className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm font-medium text-gray-700">Database</span>
+                </div>
+                <Status
+                  status={isDatabaseConnected ? 'online' : databaseError ? 'error' : 'offline'}
+                  size={14}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Connection</span>
                 <span
-                  className={`font-semibold ${isDatabaseConnected ? 'text-green-600' : 'text-red-600'}`}
+                  className={`text-sm font-semibold ${isDatabaseConnected ? 'text-green-600' : 'text-red-600'}`}
                 >
                   {isDatabaseConnected ? 'Connected' : 'Disconnected'}
                 </span>
               </div>
               {databaseError && (
-                <div className="ml-7 rounded-md bg-red-50 border border-red-200 p-2">
-                  <p className="text-sm text-red-800">{databaseError}</p>
+                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+                  {databaseError}
                 </div>
               )}
             </div>
 
             {/* WhatsApp Status */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 md:col-span-2">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm font-medium text-gray-700">WhatsApp</span>
+                </div>
                 <Status
                   status={
                     whatsappStatus === 'ready'
@@ -411,35 +534,38 @@ function HomeScreen(): React.ReactNode {
                           ? 'error'
                           : 'offline'
                   }
-                  size={16}
+                  size={14}
                 />
-                <span className="font-medium">WhatsApp:</span>
               </div>
-              <span
-                className={`font-semibold ${
-                  whatsappStatus === 'ready'
-                    ? 'text-green-600'
-                    : whatsappStatus === 'qr_ready' || whatsappStatus === 'authenticated'
-                      ? 'text-yellow-600'
-                      : whatsappStatus === 'auth_failure' || whatsappStatus === 'disconnected_error'
-                        ? 'text-red-600'
-                        : 'text-gray-600'
-                }`}
-              >
-                {whatsappStatus === 'ready'
-                  ? 'Connected'
-                  : whatsappStatus === 'qr_ready'
-                    ? 'QR Ready'
-                    : whatsappStatus === 'authenticated'
-                      ? 'Authenticating'
-                      : whatsappStatus === 'connecting'
-                        ? 'Connecting'
-                        : whatsappStatus === 'auth_failure'
-                          ? 'Auth Failed'
-                          : whatsappStatus === 'disconnected_error'
-                            ? 'Error'
-                            : 'Disconnected'}
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">Status</span>
+                <span
+                  className={`text-sm font-semibold ${
+                    whatsappStatus === 'ready'
+                      ? 'text-green-600'
+                      : whatsappStatus === 'qr_ready' || whatsappStatus === 'authenticated'
+                        ? 'text-yellow-600'
+                        : whatsappStatus === 'auth_failure' ||
+                            whatsappStatus === 'disconnected_error'
+                          ? 'text-red-600'
+                          : 'text-gray-600'
+                  }`}
+                >
+                  {whatsappStatus === 'ready'
+                    ? 'Connected'
+                    : whatsappStatus === 'qr_ready'
+                      ? 'QR Ready'
+                      : whatsappStatus === 'authenticated'
+                        ? 'Authenticating'
+                        : whatsappStatus === 'connecting'
+                          ? 'Connecting'
+                          : whatsappStatus === 'auth_failure'
+                            ? 'Auth Failed'
+                            : whatsappStatus === 'disconnected_error'
+                              ? 'Error'
+                              : 'Disconnected'}
+                </span>
+              </div>
             </div>
           </div>
         </div>

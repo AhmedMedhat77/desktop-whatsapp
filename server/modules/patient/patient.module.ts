@@ -42,7 +42,7 @@ ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
 
 نشكر لكم ثقتكم ونتمنى لكم دوام الصحة والعافية 🌹
         `.trim()
-        await sendMessageToPhone(patient.Number, message)
+        await sendMessageToPhone(patient.Number, message, true, 'newPatient', patient.Name)
       }
       lastMaxId = maxId
     }

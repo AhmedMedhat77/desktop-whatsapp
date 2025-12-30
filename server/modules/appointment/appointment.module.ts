@@ -60,7 +60,13 @@ ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
         `.trim()
 
         console.log(`Sending appointment message to ${appointment.Name} for ${formattedDate}`)
-        await sendMessageToPhone(appointment.Number, message)
+        await sendMessageToPhone(
+          appointment.Number,
+          message,
+          true,
+          'appointment',
+          appointment.Name
+        )
       }
       lastMaxId = allAppointmentsLength
     }

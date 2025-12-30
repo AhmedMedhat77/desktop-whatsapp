@@ -4,6 +4,10 @@ import { sendMessageToPhone } from '../../utils/whatsapp'
 import { companyHeader } from '../../constants/companyHeader'
 import { formatDbDate, formatDbTime } from '../../utils/formatDb'
 import { QUERIES } from '../../constants/queries'
+import {
+  getReminderSettings,
+  getReminderTimeMs
+} from '../../utils/appointmentReminderSettings'
 
 let initialized = false
 const sentReminders = new Set<string>() // Track sent reminders by unique key
@@ -16,7 +20,15 @@ scheduleJob('*/1 * * * * *', async () => {
     const allAppointments = allAppointmentsResult.recordset
     const company = await companyHeader.getCompanyHeader()
     const now = new Date()
-    const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000)
+
+    // Get reminder settings
+    const reminderSettings = getReminderSettings()
+    const reminderTimeMs = getReminderTimeMs(reminderSettings)
+
+    // If reminders are disabled, skip processing
+    if (!reminderSettings.enabled || reminderTimeMs === 0) {
+      return
+    }
 
     if (!initialized) {
       // On first run, just mark all upcoming appointments as already reminded
@@ -44,12 +56,26 @@ scheduleJob('*/1 * * * * *', async () => {
           Number(timeStr.slice(2, 4))
         )
       }
-      let isWithin2Hours = false
+
+      // Check if appointment is within the reminder window
+      let isWithinReminderWindow = false
       if (appointmentDate) {
-        isWithin2Hours = appointmentDate > now && appointmentDate <= twoHoursLater
+        // Calculate when the reminder should be sent (appointment time - reminder time)
+        const reminderTime = new Date(appointmentDate.getTime() - reminderTimeMs)
+        // Create a 1-hour window for sending the reminder (to account for timing variations)
+        const reminderWindowStart = new Date(reminderTime.getTime() - 30 * 60 * 1000) // 30 minutes before
+        const reminderWindowEnd = new Date(reminderTime.getTime() + 30 * 60 * 1000) // 30 minutes after
+
+        // Check if current time is within the reminder window
+        // Also ensure the appointment is in the future
+        isWithinReminderWindow =
+          appointmentDate > now &&
+          now >= reminderWindowStart &&
+          now <= reminderWindowEnd
       }
+
       const key = `${appointment.PatientID}_${appointment.BranchID}_${dateStr}_${timeStr}`
-      if (isWithin2Hours && !sentReminders.has(key)) {
+      if (isWithinReminderWindow && !sentReminders.has(key)) {
         const formattedDate = formatDbDate(appointment.TheDate)
         const formattedTime = formatDbTime(appointment.TheTime)
         const message = `
@@ -64,7 +90,13 @@ ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
 
 نتمنى لك الصحة والعافية 🌹
         `.trim()
-        await sendMessageToPhone(appointment.Number, message)
+        await sendMessageToPhone(
+          appointment.Number,
+          message,
+          true,
+          'appointmentReminder',
+          appointment.Name
+        )
         sentReminders.add(key)
       }
     }

@@ -16,8 +16,20 @@ import {
   disconnectWhatsApp,
   getWhatsAppStatus,
   initializeWhatsapp,
+  sendMessageToPhone,
   setMainWindow
 } from '../../server/utils/whatsapp'
+import {
+  scheduleDelayedJob,
+  cancelJob,
+  getScheduledJobs,
+  ScheduleDelay
+} from '../../server/utils/scheduler'
+import {
+  getReminderSettings,
+  saveReminderSettings,
+  type AppointmentReminderSettings
+} from '../../server/utils/appointmentReminderSettings'
 
 let adminServer: Server | null = null
 let mainWindow: BrowserWindow | null = null
@@ -251,6 +263,103 @@ ipcMain.handle('delete-whatsapp-auth', async () => {
     return { success: true }
   } catch (error) {
     console.error('Error deleting WhatsApp auth:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+})
+
+// ----------- MESSAGE HANDLERS ----------- //
+ipcMain.handle('check-duplicate-message', async (_, _phoneNumber: string, _message: string) => {
+  // This will be handled by the renderer using localStorage
+  // We return false here as a fallback, the renderer should check before calling send-message
+  return false
+})
+
+ipcMain.handle('send-message', async (_, phoneNumber: string, message: string, delay?: ScheduleDelay, customDelayMs?: number, skipDuplicateCheck?: boolean) => {
+  try {
+    const sendMessage = async () => {
+      const result = await sendMessageToPhone(phoneNumber, message, !skipDuplicateCheck, 'manual')
+      return result
+    }
+
+    if (delay && delay !== 'immediate') {
+      // Schedule the message
+      const jobId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      scheduleDelayedJob(
+        jobId,
+        async () => {
+          await sendMessage()
+        },
+        delay,
+        customDelayMs
+      )
+      return { success: true, scheduled: true, jobId }
+    } else {
+      // Send immediately
+      const result = await sendMessage()
+      return { ...result, scheduled: false }
+    }
+  } catch (error) {
+    console.error('Error sending message:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+})
+
+// ----------- SCHEDULER HANDLERS ----------- //
+ipcMain.handle('get-scheduled-jobs', async () => {
+  try {
+    const jobs = getScheduledJobs()
+    return jobs.map((job) => ({
+      id: job.id,
+      delay: job.delay,
+      customDelayMs: job.customDelayMs,
+      executeAt: job.executeAt.toISOString()
+    }))
+  } catch (error) {
+    console.error('Error getting scheduled jobs:', error)
+    return []
+  }
+})
+
+ipcMain.handle('cancel-scheduled-job', async (_, jobId: string) => {
+  try {
+    const canceled = cancelJob(jobId)
+    return { success: canceled }
+  } catch (error) {
+    console.error('Error canceling scheduled job:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+})
+
+// ----------- APPOINTMENT REMINDER SETTINGS HANDLERS ----------- //
+ipcMain.handle('get-appointment-reminder-settings', async () => {
+  try {
+    const settings = getReminderSettings()
+    return settings
+  } catch (error) {
+    console.error('Error getting appointment reminder settings:', error)
+    return {
+      reminderType: '1day',
+      customHours: 24,
+      enabled: true
+    }
+  }
+})
+
+ipcMain.handle('set-appointment-reminder-settings', async (_, settings: AppointmentReminderSettings) => {
+  try {
+    saveReminderSettings(settings)
+    return { success: true }
+  } catch (error) {
+    console.error('Error saving appointment reminder settings:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)

@@ -110,31 +110,87 @@ async function processMessageQueue(): Promise<void> {
 }
 
 // Send message to phone number
-export async function sendMessageToPhone(number: string, message: string): Promise<void> {
+export async function sendMessageToPhone(
+  number: string,
+  message: string,
+  _checkDuplicate: boolean = true,
+  messageType: 'appointment' | 'appointmentReminder' | 'newPatient' | 'manual' = 'manual',
+  userName?: string
+): Promise<{ success: boolean; error?: string; isDuplicate?: boolean }> {
   try {
     if (!number) {
       console.error('⚠️ Phone number missing')
-      return
+      return { success: false, error: 'Phone number missing' }
     }
 
     // If WhatsApp client is not ready, queue the message
     if (!isReady || !whatsappClient || !whatsappClient.info) {
       console.log(`📝 Queuing message for ${number} (WhatsApp not ready)`)
       messageQueue.push({ number, message })
-      return
+      // Notify renderer about queued message
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('message-sent', {
+          phoneNumber: number,
+          userName,
+          message,
+          messageType,
+          status: 'pending',
+          sentAt: new Date().toISOString()
+        })
+      }
+      return { success: true }
     }
 
     const chatId = `${formatPhoneNumber(number)}@c.us`
     console.log(`📱 Attempting to send message to: ${chatId}`)
 
+    // Notify renderer about pending message
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('message-sent', {
+        phoneNumber: number,
+        userName,
+        message,
+        messageType,
+        status: 'pending',
+        sentAt: new Date().toISOString()
+      })
+    }
+
     await whatsappClient.sendMessage(chatId, message)
     console.log(`✅ Message sent to ${number}`)
+
+    // Notify renderer about successful message
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('message-sent', {
+        phoneNumber: number,
+        userName,
+        message,
+        messageType,
+        status: 'sent',
+        sentAt: new Date().toISOString()
+      })
+    }
+
+    return { success: true }
   } catch (err: Error | unknown) {
     console.log(err)
-    console.error(
-      `❌ Failed to send to ${number}:`,
-      err instanceof Error ? err.message : 'Unknown error'
-    )
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+    console.error(`❌ Failed to send to ${number}:`, errorMessage)
+
+    // Notify renderer about failed message
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('message-sent', {
+        phoneNumber: number,
+        userName,
+        message,
+        messageType,
+        status: 'failed',
+        sentAt: new Date().toISOString(),
+        error: errorMessage
+      })
+    }
+
+    return { success: false, error: errorMessage }
   }
 }
 
