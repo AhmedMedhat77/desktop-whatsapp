@@ -1,6 +1,5 @@
-import { sql } from '../db'
-
 import { IResult } from 'mssql'
+import { getConnection } from '../db'
 import { QUERIES } from '../constants/queries'
 
 type CompanyHeader = {
@@ -21,7 +20,8 @@ const getCompanyHeader = async (): Promise<IResult<CompanyHeader>['recordset'][0
   }
 
   try {
-    const result = await sql.query(QUERIES.companyHeader)
+    const pool = await getConnection()
+    const result = await QUERIES.companyHeader(pool.request())
 
     if (result.recordset.length > 0) {
       companyHeaderData = result.recordset[0]

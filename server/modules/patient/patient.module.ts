@@ -1,4 +1,3 @@
-import sql from 'mssql'
 import { scheduleJob } from 'node-schedule'
 import { companyHeader } from '../../constants/companyHeader'
 import { QUERIES } from '../../constants/queries'
@@ -74,10 +73,7 @@ ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
       if (result.success) {
         console.log(`✅ Message sent successfully to ${patient.Name} (${patient.Number})`)
         // Update IsWhatsAppSent to 1 to mark as sent (using parameterized query)
-        await pool
-          .request()
-          .input('id', sql.Int, patient.ID)
-          .query(`UPDATE Clinic_PatientsTelNumbers SET IsWhatsAppSent = 1 WHERE ID = @id`)
+        await QUERIES.updatePatientIsWhatsAppSent(pool.request(), patient)
       } else {
         console.error(`❌ Failed to send message to ${patient.Name}: ${result.error}`)
         // Don't update IsWhatsAppSent if send failed, so it can be retried

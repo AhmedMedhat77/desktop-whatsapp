@@ -69,4 +69,3 @@ export const getReminderTimeMs = (settings: AppointmentReminderSettings): number
       return 24 * 60 * 60 * 1000
   }
 }
-

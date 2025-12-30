@@ -34,9 +34,9 @@ scheduleJob('*/1 * * * * *', async () => {
       console.error('Error getting database connection:', dbError)
       return // skip on first run or after restart
     }
-
+    const request = pool.request()
     // Get all appointments using the provided query
-    const allAppointmentsResult = await pool.request().query(QUERIES.appointments)
+    const allAppointmentsResult = await QUERIES.appointments(request)
     const allAppointments = allAppointmentsResult.recordset
 
     if (!initialized) {
