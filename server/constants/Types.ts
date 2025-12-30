@@ -19,6 +19,7 @@ export interface CompanyHeader {
 }
 
 export interface Appointment {
+  IsScheduleWhatsAppSent: number
   IsWhatsAppSent: number
   DoctorID: number
   PatientID: number

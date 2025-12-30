@@ -44,6 +44,32 @@ export const QUERIES = {
     )
   },
 
+  getScheduleAppointments: async (request: Request): Promise<IResult<Appointment>> => {
+    return await request.query(
+      `SELECT 
+      Appointment.IsWhatsAppSent,
+      Appointment.DoctorID,
+      Appointment.PatientID,
+      Appointment.BranchID,
+      Appointment.TheTime,
+      Appointment.TheDate,
+      Doctor.ArbName AS DoctorArbName,
+      Doctor.ClinicDepartmentID,
+      sp.ArbName AS SpecialtyArbName,
+      sp.EngName AS SpecialtyEngName,
+      Patient.Number,
+      Patient.Name
+    FROM Clinic_PatientsAppointments AS Appointment
+    INNER JOIN dbo.Clinic_Doctors AS Doctor 
+      ON Appointment.DoctorID = Doctor.DoctorID AND Appointment.BranchID = Doctor.BranchID
+    INNER JOIN Clinic_DoctorSpecialty AS sp
+      ON Doctor.DoctorSpecialtyID = sp.ID
+    INNER JOIN Clinic_PatientsTelNumbers AS Patient 
+      ON Patient.PatientID = Appointment.PatientID AND Patient.BranchID = Appointment.BranchID
+      WHERE Appointment.IsScheduleWhatsAppSent = 0`
+    )
+  },
+
   updateAppointmentIsWhatsAppSent: async (request: Request, params: Appointment): Promise<void> => {
     request.input('DoctorID', sql.Int, params.DoctorID)
     request.input('TheDate', sql.Int, params.TheDate)
@@ -52,6 +78,20 @@ export const QUERIES = {
     request.input('IsWhatsAppSent', sql.Int, 1)
     await request.query(
       `UPDATE Clinic_PatientsAppointments SET IsWhatsAppSent = @IsWhatsAppSent WHERE DoctorID = @DoctorID AND TheDate = @TheDate AND TheTime = @TheTime AND BranchID = @BranchID`
+    )
+  },
+
+  updateAppointmentIsScheduleWhatsAppSent: async (
+    request: Request,
+    params: Appointment
+  ): Promise<void> => {
+    request.input('DoctorID', sql.Int, params.DoctorID)
+    request.input('TheDate', sql.Int, params.TheDate)
+    request.input('TheTime', sql.Int, params.TheTime)
+    request.input('BranchID', sql.Int, params.BranchID)
+    request.input('IsScheduleWhatsAppSent', sql.Int, 1)
+    await request.query(
+      `UPDATE Clinic_PatientsAppointments SET IsScheduleWhatsAppSent = @IsScheduleWhatsAppSent WHERE DoctorID = @DoctorID AND TheDate = @TheDate AND TheTime = @TheTime AND BranchID = @BranchID`
     )
   },
 
