@@ -5,20 +5,13 @@ import { getConnection, isDatabaseConnected } from '../../db'
 import { sendMessageToPhone } from '../../utils'
 import { formatDbDate, formatDbTime } from '../../utils/formatDb'
 
-// Track processed appointments using a unique key: PatientID_BranchID_Date_Time
-const processedAppointments = new Set<string>()
-let initialized = false
+// Track processed appointments in current execution to prevent duplicates
+const processingAppointments = new Set<string>()
 
-// Export function to reset (for debugging/manual reset)
-export const resetAppointmentWatcher = (): void => {
-  processedAppointments.clear()
-  initialized = false
-  console.log('🔄 Appointment watcher reset - will reinitialize on next check')
-}
-
-console.log('📋 Appointment watcher module loaded and scheduled')
-
+// Schedule job to watch for new appointments
 scheduleJob('*/1 * * * * *', async () => {
+  // Clear the processing set at the start of each run
+  processingAppointments.clear()
   try {
     // Check if database is connected first
     if (!isDatabaseConnected()) {
@@ -39,58 +32,28 @@ scheduleJob('*/1 * * * * *', async () => {
     const allAppointmentsResult = await QUERIES.appointments(request)
     const allAppointments = allAppointmentsResult.recordset
 
-    if (!initialized) {
-      // On first run, mark all existing appointments as processed
-      for (const appointment of allAppointments) {
-        const dateStr = appointment.TheDate?.toString() || ''
-        const timeStr = appointment.TheTime?.toString().padStart(4, '0') || ''
-        const key = `${appointment.PatientID}_${appointment.BranchID}_${dateStr}_${timeStr}`
-        processedAppointments.add(key)
-      }
-      initialized = true
-      console.log(
-        `✅ Initialized appointment watcher. Found ${allAppointments.length} existing appointments.`
-      )
+    if (allAppointments.length === 0) {
+      // No appointments to process, skip silently
       return
     }
 
+    console.log(`🔍 Found ${allAppointments.length} appointment(s) to process`)
+
     // Process new appointments
     const company = await companyHeader.getCompanyHeader()
-    let newCount = 0
-    let skippedCount = 0
 
     for (const appointment of allAppointments) {
-      const dateStr = appointment.TheDate?.toString() || ''
-      const timeStr = appointment.TheTime?.toString().padStart(4, '0') || ''
-      const key = `${appointment.PatientID}_${appointment.BranchID}_${dateStr}_${timeStr}`
+      // Create unique key to prevent duplicate processing in the same run
+      const uniqueKey = `${appointment.DoctorID}_${appointment.BranchID}_${appointment.TheDate}_${appointment.TheTime}`
 
-      // Skip if already processed
-      if (processedAppointments.has(key)) {
-        skippedCount++
+      // Skip if already being processed in this run
+      if (processingAppointments.has(uniqueKey)) {
+        console.log(`⏭️ Skipping duplicate appointment: ${appointment.Name} (Key: ${uniqueKey})`)
         continue
       }
 
-      // Mark as processed immediately to avoid duplicate processing
-      processedAppointments.add(key)
-      newCount++
-
-      console.log(
-        `🆕 NEW APPOINTMENT DETECTED: ${appointment.Name} (ID: ${appointment.PatientID}, Date: ${dateStr}, Time: ${timeStr})`
-      )
-
-      // Check if appointment date is today or in the future
-      const appointmentDate = new Date(appointment.TheDate)
-      const today = new Date()
-      today.setHours(0, 0, 0, 0) // Reset time to start of day for accurate comparison
-      appointmentDate.setHours(0, 0, 0, 0) // Reset time to start of day for accurate comparison
-
-      // Skip appointments that are in the past
-      if (appointmentDate < today) {
-        console.log(
-          `Skipping past appointment for ${appointment.Name} on ${formatDbDate(appointment.TheDate)}`
-        )
-        continue
-      }
+      // Mark as processing immediately
+      processingAppointments.add(uniqueKey)
 
       const formattedDate = formatDbDate(appointment.TheDate)
       const formattedTime = formatDbTime(appointment.TheTime)
@@ -110,15 +73,52 @@ ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
       console.log(
         `📨 Sending appointment message to ${appointment.Name} (${appointment.Number}) for ${formattedDate}`
       )
-      await sendMessageToPhone(appointment.Number, message, 'appointment', appointment.Name)
-    }
 
-    if (newCount > 0) {
-      console.log(`✅ Processed ${newCount} new appointment(s)`)
-    } else if (allAppointments.length > processedAppointments.size) {
-      console.log(
-        `⚠️ WARNING: Found ${allAppointments.length} appointments but only ${processedAppointments.size} processed. Skipped: ${skippedCount}. This might indicate a mismatch.`
+      // IMPORTANT: Mark as sent IMMEDIATELY to prevent duplicate sends
+      // Update IsWhatsAppSent to 1 BEFORE sending the message
+      try {
+        const updateRequest = pool.request()
+        console.log(
+          `🔄 Updating appointment: DoctorID=${appointment.DoctorID}, TheDate=${appointment.TheDate}, TheTime=${appointment.TheTime}, BranchID=${appointment.BranchID}`
+        )
+        const rowsAffected = await QUERIES.updateAppointmentIsWhatsAppSent(
+          updateRequest,
+          appointment
+        )
+        if (rowsAffected > 0) {
+          console.log(
+            `✅ Updated IsWhatsAppSent for appointment: ${appointment.Name} (Date: ${formattedDate}, Time: ${formattedTime}) - Rows affected: ${rowsAffected}`
+          )
+        } else {
+          console.warn(
+            `⚠️ No rows updated for appointment: ${appointment.Name} (Date: ${formattedDate}, Time: ${formattedTime}) - DoctorID: ${appointment.DoctorID}, TheDate: ${appointment.TheDate}, TheTime: ${appointment.TheTime}, BranchID: ${appointment.BranchID}`
+          )
+          // Skip sending if update failed - might be a data mismatch
+          continue
+        }
+      } catch (updateError) {
+        console.error(
+          `❌ Failed to update IsWhatsAppSent for appointment ${appointment.Name}:`,
+          updateError
+        )
+        // Skip sending if update failed
+        continue
+      }
+
+      // Send the message
+      const result = await sendMessageToPhone(
+        appointment.Number,
+        message,
+        'appointment',
+        appointment.Name
       )
+
+      if (result.success) {
+        console.log(`✅ Message sent successfully to ${appointment.Name}`)
+      } else {
+        console.error(`❌ Failed to send message to ${appointment.Name}: ${result.error}`)
+        // Note: We already marked it as sent to prevent spam, even if sending failed
+      }
     }
   } catch (err) {
     console.error('Error watching Appointments:', err)

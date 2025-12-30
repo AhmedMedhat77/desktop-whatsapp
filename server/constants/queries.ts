@@ -18,6 +18,7 @@ export const QUERIES = {
   },
 
   appointments: async (request: Request): Promise<IResult<Appointment>> => {
+    request.input('IsWhatsAppSent', sql.Int, 0)
     return await request.query(
       `SELECT 
         Appointment.IsWhatsAppSent,
@@ -39,9 +40,24 @@ export const QUERIES = {
         ON Doctor.DoctorSpecialtyID = sp.ID
       INNER JOIN Clinic_PatientsTelNumbers AS Patient 
         ON Patient.PatientID = Appointment.PatientID AND Patient.BranchID = Appointment.BranchID
-        WHERE Appointment.IsWhatsAppSent = 0
+        WHERE Appointment.IsWhatsAppSent = @IsWhatsAppSent
         `
     )
+  },
+
+  updateAppointmentIsWhatsAppSent: async (
+    request: Request,
+    params: Appointment
+  ): Promise<number> => {
+    request.input('DoctorID', sql.Int, params.DoctorID)
+    request.input('TheDate', sql.Int, params.TheDate)
+    request.input('TheTime', sql.Int, params.TheTime)
+    request.input('BranchID', sql.Int, params.BranchID)
+    request.input('IsWhatsAppSent', sql.Int, 1)
+    const result = await request.query(
+      `UPDATE Clinic_PatientsAppointments SET IsWhatsAppSent = @IsWhatsAppSent WHERE DoctorID = @DoctorID AND TheDate = @TheDate AND TheTime = @TheTime AND BranchID = @BranchID`
+    )
+    return result.rowsAffected[0] || 0
   },
 
   getScheduleAppointments: async (request: Request): Promise<IResult<Appointment>> => {
@@ -70,29 +86,19 @@ export const QUERIES = {
     )
   },
 
-  updateAppointmentIsWhatsAppSent: async (request: Request, params: Appointment): Promise<void> => {
-    request.input('DoctorID', sql.Int, params.DoctorID)
-    request.input('TheDate', sql.Int, params.TheDate)
-    request.input('TheTime', sql.Int, params.TheTime)
-    request.input('BranchID', sql.Int, params.BranchID)
-    request.input('IsWhatsAppSent', sql.Int, 1)
-    await request.query(
-      `UPDATE Clinic_PatientsAppointments SET IsWhatsAppSent = @IsWhatsAppSent WHERE DoctorID = @DoctorID AND TheDate = @TheDate AND TheTime = @TheTime AND BranchID = @BranchID`
-    )
-  },
-
   updateAppointmentIsScheduleWhatsAppSent: async (
     request: Request,
     params: Appointment
-  ): Promise<void> => {
+  ): Promise<number> => {
     request.input('DoctorID', sql.Int, params.DoctorID)
     request.input('TheDate', sql.Int, params.TheDate)
     request.input('TheTime', sql.Int, params.TheTime)
     request.input('BranchID', sql.Int, params.BranchID)
     request.input('IsScheduleWhatsAppSent', sql.Int, 1)
-    await request.query(
+    const result = await request.query(
       `UPDATE Clinic_PatientsAppointments SET IsScheduleWhatsAppSent = @IsScheduleWhatsAppSent WHERE DoctorID = @DoctorID AND TheDate = @TheDate AND TheTime = @TheTime AND BranchID = @BranchID`
     )
+    return result.rowsAffected[0] || 0
   },
 
   patientTel: async (request: Request): Promise<IResult<Patient>> => {
@@ -105,12 +111,14 @@ export const QUERIES = {
       `SELECT * FROM Clinic_PatientsTelNumbers WHERE IsWhatsAppSent = @isWhatsAppSent  ORDER BY ID ASC`
     )
   },
-  updatePatientIsWhatsAppSent: async (request: Request, params: Patient): Promise<void> => {
+
+  updatePatientIsWhatsAppSent: async (request: Request, params: Patient): Promise<number> => {
     request.input('PatientID', sql.Int, params.PatientID)
     request.input('IsWhatsAppSent', sql.Int, 1)
     request.input('BranchID', sql.Int, params.BranchID)
-    await request.query(
+    const result = await request.query(
       `UPDATE Clinic_PatientsTelNumbers SET IsWhatsAppSent = @IsWhatsAppSent WHERE PatientID = @PatientID AND BranchID = @BranchID`
     )
+    return result.rowsAffected[0] || 0
   }
 }

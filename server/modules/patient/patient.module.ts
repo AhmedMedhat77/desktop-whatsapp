@@ -4,8 +4,12 @@ import { QUERIES } from '../../constants/queries'
 import { getConnection, isDatabaseConnected } from '../../db'
 import { sendMessageToPhone } from '../../utils'
 
-// Track processed patients by PatientID
+// Track processed patients in current execution to prevent duplicates
+const processingPatients = new Set<number>()
+
 scheduleJob('*/1 * * * * *', async () => {
+  // Clear the processing set at the start of each run
+  processingPatients.clear()
   try {
     // Check if database is connected first
     if (!isDatabaseConnected()) {
@@ -30,6 +34,13 @@ scheduleJob('*/1 * * * * *', async () => {
     const allPatientsResult = await QUERIES.getPatients(pool.request())
     const allPatients = allPatientsResult.recordset
 
+    if (allPatients.length === 0) {
+      // No patients to process, skip silently
+      return
+    }
+
+    console.log(`🔍 Found ${allPatients.length} patient(s) to process`)
+
     // Process new patients
     const company = await companyHeader.getCompanyHeader()
 
@@ -49,6 +60,15 @@ scheduleJob('*/1 * * * * *', async () => {
         continue
       }
 
+      // Skip if already being processed in this run
+      if (processingPatients.has(patientId)) {
+        console.log(`⏭️ Skipping duplicate patient: ${patient.Name} (ID: ${patientId})`)
+        continue
+      }
+
+      // Mark as processing immediately
+      processingPatients.add(patientId)
+
       const message = `
 مرحباً ${patient.Name || 'مريض'}،
 
@@ -66,17 +86,40 @@ ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
         `📨 Sending new patient message to ${patient.Name} (${patient.Number}) - PatientID: ${patientId}`
       )
 
+      // IMPORTANT: Mark as sent IMMEDIATELY to prevent duplicate sends
+      // Update IsWhatsAppSent to 1 BEFORE sending the message
+      try {
+        const updateRequest = pool.request()
+        console.log(`🔄 Updating patient: PatientID=${patientId}, BranchID=${patient.BranchID}`)
+        const rowsAffected = await QUERIES.updatePatientIsWhatsAppSent(updateRequest, patient)
+        if (rowsAffected > 0) {
+          console.log(
+            `✅ Updated IsWhatsAppSent for patient: ${patient.Name} (ID: ${patientId}) - Rows affected: ${rowsAffected}`
+          )
+        } else {
+          console.warn(
+            `⚠️ No rows updated for patient: ${patient.Name} (ID: ${patientId}) - BranchID: ${patient.BranchID} - Check if record exists`
+          )
+          // Skip sending if update failed - might be a data mismatch
+          continue
+        }
+      } catch (updateError) {
+        console.error(
+          `❌ Failed to update IsWhatsAppSent for patient ${patient.Name}:`,
+          updateError
+        )
+        // Skip sending if update failed
+        continue
+      }
+
       // Send the message
       const result = await sendMessageToPhone(patient.Number, message, 'newPatient', patient.Name)
 
-      // Only mark as sent if message was successfully sent
       if (result.success) {
         console.log(`✅ Message sent successfully to ${patient.Name} (${patient.Number})`)
-        // Update IsWhatsAppSent to 1 to mark as sent (using parameterized query)
-        await QUERIES.updatePatientIsWhatsAppSent(pool.request(), patient)
       } else {
         console.error(`❌ Failed to send message to ${patient.Name}: ${result.error}`)
-        // Don't update IsWhatsAppSent if send failed, so it can be retried
+        // Note: We already marked it as sent to prevent spam, even if sending failed
       }
     }
   } catch (err) {
