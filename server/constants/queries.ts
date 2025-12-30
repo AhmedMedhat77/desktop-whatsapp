@@ -1,3 +1,15 @@
+import { IResult, Request } from 'mssql'
+import { sql } from '../db'
+
+export interface Patient {
+  ID: number
+  PatientID: number
+  Name: string
+  Number: string
+  Transfer: number
+  IsWhatsAppSent: number
+}
+
 export const QUERIES = {
   companyHeader: `SELECT pic,CompanyArbName,CompanyEngName,ArbAddress,EngAddress,ArbTel,EngTel FROM dbo.CompanyHeader`,
   appointments: `SELECT 
@@ -20,5 +32,24 @@ export const QUERIES = {
    INNER JOIN Clinic_PatientsTelNumbers AS Patient 
    ON Patient.PatientID = Appointment.PatientID AND Patient.BranchID = Appointment.BranchID`,
 
-  patientTel: `SELECT * FROM Clinic_PatientsTelNumbers ORDER BY PatientID ASC`
+  patientTel: `SELECT * FROM Clinic_PatientsTelNumbers ORDER BY PatientID ASC`,
+
+  getPatients: async (request: Request): Promise<IResult<Patient>> => {
+    request.input('isWhatsAppSent', sql.Int, 0)
+
+    return await request.query(
+      `SELECT * FROM Clinic_PatientsTelNumbers WHERE IsWhatsAppSent = @isWhatsAppSent  ORDER BY ID ASC`
+    )
+  },
+  updatePatientIsWhatsAppSent: async (
+    request: Request,
+    PatientID: number,
+    IsWhatsAppSent: number
+  ): Promise<void> => {
+    request.input('PatientID', sql.Int, PatientID)
+    request.input('IsWhatsAppSent', sql.Int, IsWhatsAppSent)
+    await request.query(
+      `UPDATE Clinic_PatientsTelNumbers SET IsWhatsAppSent = @IsWhatsAppSent WHERE PatientID = @PatientID`
+    )
+  }
 }

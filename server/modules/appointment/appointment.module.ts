@@ -54,21 +54,10 @@ scheduleJob('*/1 * * * * *', async () => {
       return
     }
 
-    // Debug: Log if we see more appointments than processed
-    if (allAppointments.length > processedAppointments.size) {
-      console.log(
-        `🔍 Checking for new appointments. Total in DB: ${allAppointments.length}, Processed: ${processedAppointments.size}`
-      )
-    }
-
     // Process new appointments
     const company = await companyHeader.getCompanyHeader()
     let newCount = 0
     let skippedCount = 0
-
-    console.log(
-      `🔍 Processing ${allAppointments.length} appointments. Already processed: ${processedAppointments.size}`
-    )
 
     for (const appointment of allAppointments) {
       const dateStr = appointment.TheDate?.toString() || ''

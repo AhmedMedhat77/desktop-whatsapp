@@ -1,5 +1,6 @@
 import { sql } from '../db'
 
+import { IResult } from 'mssql'
 import { QUERIES } from '../constants/queries'
 
 type CompanyHeader = {
@@ -14,7 +15,7 @@ type CompanyHeader = {
 
 let companyHeaderData: CompanyHeader | null = null
 
-const getCompanyHeader = async (): Promise<CompanyHeader | null> => {
+const getCompanyHeader = async (): Promise<IResult<CompanyHeader>['recordset'][0] | null> => {
   if (companyHeaderData) {
     return companyHeaderData
   }
