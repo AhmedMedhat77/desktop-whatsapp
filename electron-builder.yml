@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: desktop-whatsapp
+appId: com.clinicmessenger.app
+productName: ClinicMessenger
 directories:
   buildResources: build
 files:
@@ -18,7 +18,7 @@ win:
     - target: nsis
       arch:
         - x64
-  executableName: desktop-whatsapp
+  executableName: ClinicMessenger
   icon: build/icon.ico
 nsis:
   artifactName: ${name}-${version}-setup.${ext}

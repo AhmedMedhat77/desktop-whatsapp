@@ -1,7 +1,7 @@
 {
-  "name": "desktop-whatsapp",
+  "name": "clinic-messenger",
   "version": "1.0.0",
-  "description": "An Electron application with React and TypeScript",
+  "description": "ClinicMessenger - Automated WhatsApp messaging system for healthcare clinics",
   "main": "./out/main/index.js",
   "author": "example.com",
   "homepage": "https://electron-vite.org",
@@ -15,8 +15,9 @@
     "dev": "concurrently \"electron-vite dev\" \"cd admin && npm run dev\"",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
+    "convert-icon": "node scripts/convert-icon.js",
     "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win",
+    "build:win": "npm run convert-icon && npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux"
   },
@@ -63,6 +64,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
+    "png-to-ico": "^3.0.1",
     "prettier": "^3.6.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

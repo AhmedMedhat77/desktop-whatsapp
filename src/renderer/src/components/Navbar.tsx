@@ -1,5 +1,6 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { Home, MessageSquare, Settings, Zap } from 'lucide-react'
+import { Home, MessageSquare, Settings } from 'lucide-react'
+import Logo from './Logo'
 
 interface NavItem {
   label: string
@@ -34,15 +35,9 @@ const Navbar: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo/Brand */}
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-600 rounded-lg shadow-md">
-              <Zap className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">WhatsApp Manager</h1>
-              <p className="text-xs text-gray-500 hidden sm:block">Desktop Messaging System</p>
-            </div>
-          </div>
+          <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <Logo size="md" showText={true} />
+          </Link>
 
           {/* Navigation Items */}
           <ul className="flex items-center gap-2">

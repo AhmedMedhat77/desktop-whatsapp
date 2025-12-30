@@ -299,9 +299,9 @@ function HomeScreen(): React.ReactNode {
         <div className="text-center">
           <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center justify-center gap-3">
             <Server className="w-10 h-10 text-blue-600" />
-            Control Panel
+            ClinicMessenger Control Panel
           </h1>
-          <p className="text-gray-600">Manage your WhatsApp messaging system</p>
+          <p className="text-gray-600">Manage your automated WhatsApp messaging system</p>
         </div>
 
         {/* Server Controls Card */}
