@@ -1,20 +1,29 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useState, useMemo } from 'react'
-import {
-  getMessagesFromStorage,
-  clearMessagesFromStorage,
-  isDuplicateMessage,
-  saveMessageToStorage,
-  type StoredMessage,
-  type MessageType
-} from '@renderer/utils/localStorage'
 import Button from '@renderer/components/Button'
-import Status from '@renderer/components/Status'
-import ScheduleControls, { type ScheduleDelay } from '@renderer/components/ScheduleControls'
 import Input from '@renderer/components/Input'
+import ScheduleControls, { type ScheduleDelay } from '@renderer/components/ScheduleControls'
+import Status from '@renderer/components/Status'
 import Toast from '@renderer/components/Toast'
 import { useToast } from '@renderer/hooks/useToast'
-import { Search, Filter, X, Send, RefreshCw, Trash2, MessageSquare, AlertCircle } from 'lucide-react'
+import {
+  clearMessagesFromStorage,
+  getMessagesFromStorage,
+  isDuplicateMessage,
+  saveMessageToStorage,
+  type MessageType,
+  type StoredMessage
+} from '@renderer/utils/localStorage'
+import { createFileRoute } from '@tanstack/react-router'
+import {
+  AlertCircle,
+  Filter,
+  MessageSquare,
+  RefreshCw,
+  Search,
+  Send,
+  Trash2,
+  X
+} from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 
 export const Route = createFileRoute('/messages/')({
   component: MessagesScreen
@@ -36,7 +45,7 @@ function MessagesScreen(): React.ReactNode {
   const loadMessages = (): void => {
     // Prevent multiple simultaneous loads
     if (isLoading) return
-    
+
     setIsLoading(true)
     try {
       const storedMessages = getMessagesFromStorage()
@@ -64,7 +73,10 @@ function MessagesScreen(): React.ReactNode {
   useEffect(() => {
     // Debug: Check if API is available
     if (process.env.NODE_ENV === 'development') {
-      console.log('Available API methods:', window.api ? Object.keys(window.api) : 'window.api is undefined')
+      console.log(
+        'Available API methods:',
+        window.api ? Object.keys(window.api) : 'window.api is undefined'
+      )
       console.log('sendMessage available:', typeof window.api?.sendMessage)
     }
 
@@ -258,9 +270,7 @@ function MessagesScreen(): React.ReactNode {
               <MessageSquare className="w-8 h-8 text-blue-600" />
               Messages
             </h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Manage and track all sent messages
-            </p>
+            <p className="text-sm text-gray-500 mt-1">Manage and track all sent messages</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -388,9 +398,7 @@ function MessagesScreen(): React.ReactNode {
             </h2>
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
                 <Input
                   type="text"
                   value={phoneNumber}
@@ -474,7 +482,9 @@ function MessagesScreen(): React.ReactNode {
                               {message.userName || 'Unknown User'}
                             </div>
                           </div>
-                          <div className="text-sm text-gray-600 font-mono">{message.phoneNumber}</div>
+                          <div className="text-sm text-gray-600 font-mono">
+                            {message.phoneNumber}
+                          </div>
                           <div className="text-xs text-gray-500 mt-1">
                             {formatDate(message.sentAt || message.createdAt)}
                           </div>
@@ -538,4 +548,3 @@ function MessagesScreen(): React.ReactNode {
     </div>
   )
 }
-

@@ -1,8 +1,8 @@
-import { Client, LocalAuth } from 'whatsapp-web.js'
 import type { BrowserWindow } from 'electron'
+import { execSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { execSync } from 'node:child_process'
+import { Client, LocalAuth } from 'whatsapp-web.js'
 import { formatPhoneNumber } from './phoneNumber'
 let whatsappClient: Client | null = null
 let mainWindow: BrowserWindow | null = null
@@ -103,7 +103,7 @@ const messageQueue: Array<{ number: string; message: string }> = []
 async function processMessageQueue(): Promise<void> {
   while (messageQueue.length > 0) {
     const { number, message } = messageQueue.shift()!
-    await sendMessageToPhone(number, message)
+    await sendMessageToPhone(number, message, 'manual')
     // Add a small delay between messages to avoid rate limiting
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
@@ -113,7 +113,6 @@ async function processMessageQueue(): Promise<void> {
 export async function sendMessageToPhone(
   number: string,
   message: string,
-  _checkDuplicate: boolean = true,
   messageType: 'appointment' | 'appointmentReminder' | 'newPatient' | 'manual' = 'manual',
   userName?: string
 ): Promise<{ success: boolean; error?: string; isDuplicate?: boolean }> {

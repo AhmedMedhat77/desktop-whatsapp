@@ -271,44 +271,47 @@ ipcMain.handle('delete-whatsapp-auth', async () => {
 })
 
 // ----------- MESSAGE HANDLERS ----------- //
-ipcMain.handle('check-duplicate-message', async (_, _phoneNumber: string, _message: string) => {
-  // This will be handled by the renderer using localStorage
-  // We return false here as a fallback, the renderer should check before calling send-message
-  return false
-})
+ipcMain.handle(
+  'send-message',
+  async (
+    _,
+    phoneNumber: string,
+    message: string,
+    delay?: ScheduleDelay,
+    customDelayMs?: number
+  ) => {
+    try {
+      const sendMessage = async (): Promise<{ success: boolean; error?: string }> => {
+        const result = await sendMessageToPhone(phoneNumber, message, 'manual')
+        return result
+      }
 
-ipcMain.handle('send-message', async (_, phoneNumber: string, message: string, delay?: ScheduleDelay, customDelayMs?: number, skipDuplicateCheck?: boolean) => {
-  try {
-    const sendMessage = async () => {
-      const result = await sendMessageToPhone(phoneNumber, message, !skipDuplicateCheck, 'manual')
-      return result
-    }
-
-    if (delay && delay !== 'immediate') {
-      // Schedule the message
-      const jobId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      scheduleDelayedJob(
-        jobId,
-        async () => {
-          await sendMessage()
-        },
-        delay,
-        customDelayMs
-      )
-      return { success: true, scheduled: true, jobId }
-    } else {
-      // Send immediately
-      const result = await sendMessage()
-      return { ...result, scheduled: false }
-    }
-  } catch (error) {
-    console.error('Error sending message:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
+      if (delay && delay !== 'immediate') {
+        // Schedule the message
+        const jobId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+        scheduleDelayedJob(
+          jobId,
+          async () => {
+            await sendMessage()
+          },
+          delay,
+          customDelayMs
+        )
+        return { success: true, scheduled: true, jobId }
+      } else {
+        // Send immediately
+        const result = await sendMessage()
+        return { ...result, scheduled: false }
+      }
+    } catch (error) {
+      console.error('Error sending message:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      }
     }
   }
-})
+)
 
 // ----------- SCHEDULER HANDLERS ----------- //
 ipcMain.handle('get-scheduled-jobs', async () => {
@@ -354,15 +357,18 @@ ipcMain.handle('get-appointment-reminder-settings', async () => {
   }
 })
 
-ipcMain.handle('set-appointment-reminder-settings', async (_, settings: AppointmentReminderSettings) => {
-  try {
-    saveReminderSettings(settings)
-    return { success: true }
-  } catch (error) {
-    console.error('Error saving appointment reminder settings:', error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
+ipcMain.handle(
+  'set-appointment-reminder-settings',
+  async (_, settings: AppointmentReminderSettings) => {
+    try {
+      saveReminderSettings(settings)
+      return { success: true }
+    } catch (error) {
+      console.error('Error saving appointment reminder settings:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      }
     }
   }
-})
+)

@@ -1,13 +1,10 @@
 import { scheduleJob } from 'node-schedule'
-import { getConnection } from '../../db'
-import { sendMessageToPhone } from '../../utils/whatsapp'
 import { companyHeader } from '../../constants/companyHeader'
-import { formatDbDate, formatDbTime } from '../../utils/formatDb'
 import { QUERIES } from '../../constants/queries'
-import {
-  getReminderSettings,
-  getReminderTimeMs
-} from '../../utils/appointmentReminderSettings'
+import { getConnection } from '../../db'
+import { getReminderSettings, getReminderTimeMs } from '../../utils/appointmentReminderSettings'
+import { formatDbDate, formatDbTime } from '../../utils/formatDb'
+import { sendMessageToPhone } from '../../utils/whatsapp'
 
 let initialized = false
 const sentReminders = new Set<string>() // Track sent reminders by unique key
@@ -69,9 +66,7 @@ scheduleJob('*/1 * * * * *', async () => {
         // Check if current time is within the reminder window
         // Also ensure the appointment is in the future
         isWithinReminderWindow =
-          appointmentDate > now &&
-          now >= reminderWindowStart &&
-          now <= reminderWindowEnd
+          appointmentDate > now && now >= reminderWindowStart && now <= reminderWindowEnd
       }
 
       const key = `${appointment.PatientID}_${appointment.BranchID}_${dateStr}_${timeStr}`
@@ -93,7 +88,6 @@ ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
         await sendMessageToPhone(
           appointment.Number,
           message,
-          true,
           'appointmentReminder',
           appointment.Name
         )

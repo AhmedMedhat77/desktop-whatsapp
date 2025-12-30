@@ -1,25 +1,25 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import Button from '@renderer/components/Button'
 import Input from '@renderer/components/Input'
 import Toast from '@renderer/components/Toast'
 import { useToast } from '@renderer/hooks/useToast'
-import type { ReminderType } from '@renderer/utils/appointmentSettings'
 import { dbConfigSchema, type IDatabaseForm } from '@renderer/utils'
+import type { ReminderType } from '@renderer/utils/appointmentSettings'
+import { createFileRoute } from '@tanstack/react-router'
 import {
-  Database,
-  Server,
-  User,
-  Key,
-  Save,
-  RefreshCw,
+  Bell,
   CheckCircle,
-  XCircle,
+  Database,
+  Key,
+  RefreshCw,
+  Save,
+  Server,
   Settings as SettingsIcon,
-  Bell
+  User,
+  XCircle
 } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
 
 export const Route = createFileRoute('/settings/')({
   component: SettingsScreen
@@ -45,18 +45,12 @@ function SettingsScreen(): React.ReactNode {
 
   const [isDbSaving, setIsDbSaving] = useState(false)
   const [isDbConnecting, setIsDbConnecting] = useState(false)
-  const [dbConnectionStatus, setDbConnectionStatus] = useState<'connected' | 'disconnected' | 'unknown'>('unknown')
+  const [dbConnectionStatus, setDbConnectionStatus] = useState<
+    'connected' | 'disconnected' | 'unknown'
+  >('unknown')
   const [dbError, setDbError] = useState<string | null>(null)
 
   const { toasts, removeToast, success, error: showError } = useToast()
-
-  useEffect(() => {
-    loadSettings()
-    checkDbConnection()
-    // Check DB connection status periodically
-    const interval = setInterval(checkDbConnection, 5000)
-    return () => clearInterval(interval)
-  }, [])
 
   const checkDbConnection = async (): Promise<void> => {
     try {
@@ -66,6 +60,7 @@ function SettingsScreen(): React.ReactNode {
         setDbError(null)
       }
     } catch (error) {
+      console.error('Error checking database connection:', error)
       setDbConnectionStatus('disconnected')
     }
   }
@@ -126,7 +121,7 @@ function SettingsScreen(): React.ReactNode {
     }
   })
 
-  const loadSettings = async (): Promise<void> => {
+  const loadSettings = useCallback(async (): Promise<void> => {
     setIsLoading(true)
     try {
       const settings = await window.api.getAppointmentReminderSettings()
@@ -139,9 +134,9 @@ function SettingsScreen(): React.ReactNode {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [showError])
 
-  const handleSave = async (): Promise<void> => {
+  const handleSave = useCallback(async (): Promise<void> => {
     setIsSaving(true)
     try {
       const result = await window.api.setAppointmentReminderSettings({
@@ -161,13 +156,21 @@ function SettingsScreen(): React.ReactNode {
     } finally {
       setIsSaving(false)
     }
-  }
+  }, [reminderType, customHours, enabled, success, showError])
 
   const reminderOptions: Array<{ value: ReminderType; label: string }> = [
     { value: '1day', label: '1 Day Before' },
     { value: '2days', label: '2 Days Before' },
     { value: 'custom', label: 'Custom Hours' }
   ]
+
+  useEffect(() => {
+    loadSettings()
+    checkDbConnection()
+    // Check DB connection status periodically
+    const interval = setInterval(checkDbConnection, 5000)
+    return () => clearInterval(interval)
+  }, [loadSettings])
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 p-4 pt-20">
@@ -201,7 +204,9 @@ function SettingsScreen(): React.ReactNode {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Database Configuration</h2>
-                <p className="text-sm text-gray-500">Configure your SQL Server database connection</p>
+                <p className="text-sm text-gray-500">
+                  Configure your SQL Server database connection
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -228,7 +233,7 @@ function SettingsScreen(): React.ReactNode {
               <div>
                 <label
                   htmlFor="db-server"
-                  className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2"
+                  className=" text-sm font-medium text-gray-700 mb-2 flex items-center gap-2"
                 >
                   <Server className="w-4 h-4 text-gray-500" />
                   Server / Host
@@ -248,7 +253,7 @@ function SettingsScreen(): React.ReactNode {
               <div>
                 <label
                   htmlFor="db-database"
-                  className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2"
+                  className=" text-sm font-medium text-gray-700 mb-2 flex items-center gap-2"
                 >
                   <Database className="w-4 h-4 text-gray-500" />
                   Database Name
@@ -268,7 +273,7 @@ function SettingsScreen(): React.ReactNode {
               <div>
                 <label
                   htmlFor="db-user"
-                  className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2"
+                  className=" text-sm font-medium text-gray-700 mb-2 flex items-center gap-2"
                 >
                   <User className="w-4 h-4 text-gray-500" />
                   Username
@@ -463,4 +468,3 @@ function SettingsScreen(): React.ReactNode {
     </div>
   )
 }
-

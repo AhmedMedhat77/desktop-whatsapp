@@ -1,9 +1,9 @@
 import { scheduleJob } from 'node-schedule'
-import { getConnection } from '../../db'
 import { companyHeader } from '../../constants/companyHeader'
-import { formatDbDate, formatDbTime } from '../../utils/formatDb'
 import { QUERIES } from '../../constants/queries'
+import { getConnection } from '../../db'
 import { sendMessageToPhone } from '../../utils'
+import { formatDbDate, formatDbTime } from '../../utils/formatDb'
 
 let lastMaxId = 0
 let initialized = false
@@ -60,13 +60,7 @@ ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
         `.trim()
 
         console.log(`Sending appointment message to ${appointment.Name} for ${formattedDate}`)
-        await sendMessageToPhone(
-          appointment.Number,
-          message,
-          true,
-          'appointment',
-          appointment.Name
-        )
+        await sendMessageToPhone(appointment.Number, message, 'appointment', appointment.Name)
       }
       lastMaxId = allAppointmentsLength
     }

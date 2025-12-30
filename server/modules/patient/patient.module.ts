@@ -1,7 +1,7 @@
 import { scheduleJob } from 'node-schedule'
+import { companyHeader } from '../../constants/companyHeader'
 import { getConnection } from '../../db'
 import { sendMessageToPhone } from '../../utils'
-import { companyHeader } from '../../constants/companyHeader'
 
 let lastMaxId = 0
 let initialized = false
@@ -42,7 +42,7 @@ ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
 
 نشكر لكم ثقتكم ونتمنى لكم دوام الصحة والعافية 🌹
         `.trim()
-        await sendMessageToPhone(patient.Number, message, true, 'newPatient', patient.Name)
+        await sendMessageToPhone(patient.Number, message, 'newPatient', patient.Name)
       }
       lastMaxId = maxId
     }

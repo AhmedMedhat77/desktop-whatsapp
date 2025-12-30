@@ -1,5 +1,5 @@
+import { AlertCircle, CheckCircle, Info, X } from 'lucide-react'
 import { useEffect } from 'react'
-import { X, CheckCircle, AlertCircle, Info } from 'lucide-react'
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning'
 
@@ -10,7 +10,12 @@ interface ToastProps {
   onClose: () => void
 }
 
-const Toast: React.FC<ToastProps> = ({ message, type = 'info', duration = 3000, onClose }) => {
+const Toast: React.FC<ToastProps> = ({
+  message,
+  type = 'info',
+  duration = 3000,
+  onClose
+}: ToastProps) => {
   useEffect(() => {
     if (duration > 0) {
       const timer = setTimeout(onClose, duration)
@@ -19,7 +24,7 @@ const Toast: React.FC<ToastProps> = ({ message, type = 'info', duration = 3000, 
     return undefined
   }, [duration, onClose])
 
-  const getIcon = () => {
+  const getIcon = (): React.ReactNode => {
     switch (type) {
       case 'success':
         return <CheckCircle className="w-5 h-5" />
@@ -32,7 +37,7 @@ const Toast: React.FC<ToastProps> = ({ message, type = 'info', duration = 3000, 
     }
   }
 
-  const getStyles = () => {
+  const getStyles = (): string => {
     switch (type) {
       case 'success':
         return 'bg-green-50 border-green-200 text-green-800'
@@ -63,4 +68,3 @@ const Toast: React.FC<ToastProps> = ({ message, type = 'info', duration = 3000, 
 }
 
 export default Toast
-
