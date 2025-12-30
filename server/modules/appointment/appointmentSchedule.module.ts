@@ -5,6 +5,7 @@ import { getConnection, isDatabaseConnected } from '../../db'
 import { formatDbDate, formatDbTime } from '../../utils/formatDb'
 import { sendMessageToPhone } from '../../utils/whatsapp'
 import { getReminderSettings, getReminderTimeMs } from '../../utils/appointmentReminderSettings'
+import { FixedMessages } from '../../quiries/FixedMessages'
 
 // Track processed reminders in current execution to prevent duplicates
 const processingReminders = new Set<string>()
@@ -29,24 +30,28 @@ scheduleJob('*/1 * * * * *', async () => {
     const pool = await getConnection()
     const request = pool.request()
     // Get all appointments using the provided query
-    const allAppointmentsResult = await QUERIES.getScheduleAppointments(request)
-    const allAppointments = allAppointmentsResult.recordset
+    const allReminders = await QUERIES.getScheduleAppointments(request)
+    const Reminders = allReminders.recordset
     const company = await companyHeader.getCompanyHeader()
-
-    if (allAppointments.length === 0) {
+    if (!company) {
+      console.error('Company header not found')
+      return
+    }
+    if (Reminders.length === 0) {
       return
     }
 
-    console.log(`🔍 Found ${allAppointments.length} appointment reminder(s) to process`)
+    console.log(`🔍 Found ${Reminders.length} appointment reminder(s) to process`)
 
     // Get reminder time in milliseconds
     const reminderTimeMs = getReminderTimeMs(reminderSettings)
     const now = new Date()
 
-    for (const appointment of allAppointments) {
+    for (const appointment of Reminders) {
       try {
         // Create unique key to prevent duplicate processing in the same run
-        const uniqueKey = `${appointment.DoctorID}_${appointment.BranchID}_${appointment.TheDate}_${appointment.TheTime}`
+        // Include PatientID to ensure each patient's appointment is tracked separately
+        const uniqueKey = `${appointment.PatientID}_${appointment.DoctorID}_${appointment.BranchID}_${appointment.TheDate}_${appointment.TheTime}`
 
         // Skip if already being processed in this run
         if (processingReminders.has(uniqueKey)) {
@@ -127,20 +132,12 @@ scheduleJob('*/1 * * * * *', async () => {
           // Skip sending if update failed
           continue
         }
-
-        // Appointment is within reminder window, send the message
-        const message = `
-مرحباً ${appointment.Name || 'مريض'}،
-
-تذكير: لديك موعد قادم مع الدكتور/ة ${appointment.DoctorArbName || 'غير محدد'} في قسم ${appointment.SpecialtyArbName || 'غير محدد'}.
-📅 التاريخ: ${formattedDate}
-⏰ الوقت: ${formattedTime}
-${company?.CompanyArbName ? `في *${company.CompanyArbName}*` : ''}
-${company?.ArbAddress ? `📍 العنوان: ${company.ArbAddress}` : ''}
-${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
-
-نتمنى لك الصحة والعافية 🌹
-        `.trim()
+        const message = FixedMessages.ScheduleMessage(
+          appointment,
+          formattedDate,
+          formattedTime,
+          company
+        )
 
         console.log(
           `📨 Sending appointment reminder to ${appointment.Name} (${appointment.Number}) - Appointment: ${formattedDate} ${formattedTime}`

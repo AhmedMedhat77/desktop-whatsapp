@@ -18,7 +18,7 @@ export const QUERIES = {
   },
 
   appointments: async (request: Request): Promise<IResult<Appointment>> => {
-    request.input('IsWhatsAppSent', sql.Int, 0)
+    request.input('IsWhatsAppSent', 0)
     return await request.query(
       `SELECT 
         Appointment.IsWhatsAppSent,
@@ -49,13 +49,14 @@ export const QUERIES = {
     request: Request,
     params: Appointment
   ): Promise<number> => {
+    request.input('PatientID', sql.Int, params.PatientID)
     request.input('DoctorID', sql.Int, params.DoctorID)
     request.input('TheDate', sql.Int, params.TheDate)
     request.input('TheTime', sql.Int, params.TheTime)
     request.input('BranchID', sql.Int, params.BranchID)
     request.input('IsWhatsAppSent', sql.Int, 1)
     const result = await request.query(
-      `UPDATE Clinic_PatientsAppointments SET IsWhatsAppSent = @IsWhatsAppSent WHERE DoctorID = @DoctorID AND TheDate = @TheDate AND TheTime = @TheTime AND BranchID = @BranchID`
+      `UPDATE Clinic_PatientsAppointments SET IsWhatsAppSent = @IsWhatsAppSent WHERE PatientID = @PatientID AND DoctorID = @DoctorID AND TheDate = @TheDate AND TheTime = @TheTime AND BranchID = @BranchID`
     )
     return result.rowsAffected[0] || 0
   },
@@ -82,7 +83,8 @@ export const QUERIES = {
       ON Doctor.DoctorSpecialtyID = sp.ID
     INNER JOIN Clinic_PatientsTelNumbers AS Patient 
       ON Patient.PatientID = Appointment.PatientID AND Patient.BranchID = Appointment.BranchID
-      WHERE Appointment.IsScheduleWhatsAppSent = 0`
+      WHERE Appointment.IsWhatsAppSent = 1 
+        AND Appointment.IsScheduleWhatsAppSent = 0`
     )
   },
 
@@ -90,13 +92,14 @@ export const QUERIES = {
     request: Request,
     params: Appointment
   ): Promise<number> => {
+    request.input('PatientID', sql.Int, params.PatientID)
     request.input('DoctorID', sql.Int, params.DoctorID)
     request.input('TheDate', sql.Int, params.TheDate)
     request.input('TheTime', sql.Int, params.TheTime)
     request.input('BranchID', sql.Int, params.BranchID)
     request.input('IsScheduleWhatsAppSent', sql.Int, 1)
     const result = await request.query(
-      `UPDATE Clinic_PatientsAppointments SET IsScheduleWhatsAppSent = @IsScheduleWhatsAppSent WHERE DoctorID = @DoctorID AND TheDate = @TheDate AND TheTime = @TheTime AND BranchID = @BranchID`
+      `UPDATE Clinic_PatientsAppointments SET IsScheduleWhatsAppSent = @IsScheduleWhatsAppSent WHERE PatientID = @PatientID AND DoctorID = @DoctorID AND TheDate = @TheDate AND TheTime = @TheTime AND BranchID = @BranchID`
     )
     return result.rowsAffected[0] || 0
   },

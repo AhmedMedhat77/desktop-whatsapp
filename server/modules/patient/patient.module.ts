@@ -3,6 +3,7 @@ import { companyHeader } from '../../constants/companyHeader'
 import { QUERIES } from '../../constants/queries'
 import { getConnection, isDatabaseConnected } from '../../db'
 import { sendMessageToPhone } from '../../utils'
+import { FixedMessages } from '../../quiries/FixedMessages'
 
 // Track processed patients in current execution to prevent duplicates
 const processingPatients = new Set<number>()
@@ -44,6 +45,10 @@ scheduleJob('*/1 * * * * *', async () => {
     // Process new patients
     const company = await companyHeader.getCompanyHeader()
 
+    if (!company) {
+      console.error('Company header not found')
+      return
+    }
     for (const patient of allPatients) {
       const patientId = Number(patient.PatientID)
 
@@ -69,28 +74,9 @@ scheduleJob('*/1 * * * * *', async () => {
       // Mark as processing immediately
       processingPatients.add(patientId)
 
-      const message = `
-مرحباً ${patient.Name || 'مريض'}،
-
-يسعدنا انضمامكم إلى *${company?.CompanyArbName || 'العيادة'}*  
-📍 العنوان: ${company?.ArbAddress || 'غير متوفر'}  
-${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
-
-✅ تم إنشاء حسابكم بنجاح.  
-🔖 رقم الملف: ${patient.PatientID}
-
-نشكر لكم ثقتكم ونتمنى لكم دوام الصحة والعافية 🌹
-      `.trim()
-
-      console.log(
-        `📨 Sending new patient message to ${patient.Name} (${patient.Number}) - PatientID: ${patientId}`
-      )
-
-      // IMPORTANT: Mark as sent IMMEDIATELY to prevent duplicate sends
-      // Update IsWhatsAppSent to 1 BEFORE sending the message
+      const message = FixedMessages.PatientMessage(patient, company)
       try {
         const updateRequest = pool.request()
-        console.log(`🔄 Updating patient: PatientID=${patientId}, BranchID=${patient.BranchID}`)
         const rowsAffected = await QUERIES.updatePatientIsWhatsAppSent(updateRequest, patient)
         if (rowsAffected > 0) {
           console.log(
