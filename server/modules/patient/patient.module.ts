@@ -9,32 +9,32 @@ import { WhatsAppStatus } from '../../constants/Types'
 
 /**
  * ATOMIC DATABASE-LEVEL LOCKING FOR PATIENT WELCOME MESSAGES
- * 
+ *
  * This module uses SQL Server's UPDATE ... OUTPUT clause to atomically claim
  * patient records for processing. This ensures 100% duplicate prevention
  * even under concurrent execution (PM2, Docker, multiple instances).
- * 
+ *
  * HOW IT WORKS:
  * 1. claimPatientMessages() atomically claims up to N pending patient records
  *    - Only records with status PENDING (0) or stale PROCESSING (1) are claimed
  *    - UPDATE is atomic at the database level - only one worker can claim each record
  *    - Returns only the records that were successfully claimed
- * 
+ *
  * 2. Process each claimed record:
  *    - Build welcome message
  *    - Send WhatsApp message
  *    - Update status to SENT (2) or FAILED (3)
- * 
+ *
  * 3. updatePatientMessageStatus() updates the record:
  *    - Only updates if workerId matches (prevents cross-worker updates)
  *    - Only updates if status is PROCESSING (prevents double-updates)
- * 
+ *
  * WHY DUPLICATES ARE IMPOSSIBLE:
  * - Database UPDATE is atomic - two workers cannot claim the same record
  * - Status check in WHERE clause ensures only unclaimed records are processed
  * - Worker ID verification prevents one worker from updating another's records
  * - Stale timeout automatically resets crashed workers' records after 5 minutes
- * 
+ *
  * This solution is production-grade and scales horizontally.
  */
 
@@ -61,6 +61,7 @@ scheduleJob('*/30 * * * * *', async () => {
         return
       }
     } catch (checkError) {
+      console.error('Error checking for migration columns:', checkError)
       // If we can't check, assume columns don't exist and skip
       return
     }
@@ -88,7 +89,9 @@ scheduleJob('*/30 * * * * *', async () => {
       return
     }
 
-    console.log(`🔍 Claimed ${claimedPatients.length} patient(s) for processing (Worker: ${workerId})`)
+    console.log(
+      `🔍 Claimed ${claimedPatients.length} patient(s) for processing (Worker: ${workerId})`
+    )
 
     // Get company header once for all messages
     const company = await companyHeader.getCompanyHeader()

@@ -3,7 +3,7 @@ import { getConnection, isDatabaseConnected } from '../connection'
 /**
  * Migration SQL embedded directly to avoid path resolution issues in Electron.
  * This ensures the migration is always available in both development and production.
- * 
+ *
  * The SQL uses IF NOT EXISTS checks, making it idempotent (safe to run multiple times).
  */
 const MIGRATION_SQL = `
@@ -126,18 +126,22 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
     const migrationSQL = MIGRATION_SQL
 
     const request = pool.request()
-    
+
     try {
       // Check migration status first
       const status = await checkMigrationStatus()
-      
+
       if (!status.needsMigration) {
         console.log('✅ Database migrations already applied (columns exist)')
         // Run data migration check only if needed (idempotent - only updates records that need updating)
         // This ensures data stays in sync if legacy fields are updated
         try {
           // Only run data migration if all columns exist
-          if (status.columnsExist.appointments && status.columnsExist.reminders && status.columnsExist.patients) {
+          if (
+            status.columnsExist.appointments &&
+            status.columnsExist.reminders &&
+            status.columnsExist.patients
+          ) {
             // Check if any records need migration before running UPDATE
             const checkAppointments = await request.query(`
               SELECT COUNT(*) as count
@@ -166,7 +170,9 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
                   SET WhatsAppStatus = 2
                   WHERE IsWhatsAppSent = 1 AND WhatsAppStatus = 0
                 `)
-                console.log(`✅ Migrated ${checkAppointments.recordset[0]?.count} appointment records`)
+                console.log(
+                  `✅ Migrated ${checkAppointments.recordset[0]?.count} appointment records`
+                )
               }
 
               if (needsReminderMigration) {
@@ -212,19 +218,19 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
       if (migrationSQL.includes('GO')) {
         batches = migrationSQL
           .split(/^\s*GO\s*$/gim)
-          .map(b => b.trim())
-          .filter(b => b.length > 0)
+          .map((b) => b.trim())
+          .filter((b) => b.length > 0)
       } else {
         // No GO statements, treat as single batch
         batches = [migrationSQL.trim()]
       }
 
       // Filter out pure comment blocks (blocks that only contain comments)
-      batches = batches.filter(batch => {
+      batches = batches.filter((batch) => {
         const withoutComments = batch
           .split('\n')
-          .map(line => line.trim())
-          .filter(line => line.length > 0 && !line.startsWith('--'))
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0 && !line.startsWith('--'))
         return withoutComments.length > 0 // Keep if has non-comment content
       })
 
@@ -233,10 +239,14 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
 
       for (const batch of batches) {
         if (batch.trim().length === 0) continue
-        
+
         try {
           // Skip pure PRINT statements (but allow SQL with PRINT)
-          if (batch.trim().match(/^PRINT\s+/i) && !batch.includes('ALTER') && !batch.includes('CREATE')) {
+          if (
+            batch.trim().match(/^PRINT\s+/i) &&
+            !batch.includes('ALTER') &&
+            !batch.includes('CREATE')
+          ) {
             continue
           }
 
@@ -245,7 +255,7 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
         } catch (error) {
           // Some errors are expected (e.g., if column already exists)
           const errorMsg = error instanceof Error ? error.message : String(error)
-          
+
           // Ignore errors about existing objects (columns, indexes)
           if (
             errorMsg.includes('already exists') ||
@@ -255,7 +265,9 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
             errorMsg.includes('already an index')
           ) {
             // This is expected - column/index already exists
-            console.log(`ℹ️  Skipping (already exists): ${batch.substring(0, 60).replace(/\n/g, ' ')}...`)
+            console.log(
+              `ℹ️  Skipping (already exists): ${batch.substring(0, 60).replace(/\n/g, ' ')}...`
+            )
             continue
           }
 
@@ -270,9 +282,9 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
       try {
         // Re-check status after schema migration
         const postMigrationStatus = await checkMigrationStatus()
-        
+
         let migratedCount = 0
-        
+
         if (postMigrationStatus.columnsExist.appointments) {
           // Check if any records need migration
           const checkResult = await request.query(`
@@ -281,7 +293,7 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
             WHERE IsWhatsAppSent = 1 AND WhatsAppStatus = 0
           `)
           const needsMigration = checkResult.recordset[0]?.count > 0
-          
+
           if (needsMigration) {
             const updateResult = await request.query(`
               UPDATE Clinic_PatientsAppointments
@@ -295,7 +307,7 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
             }
           }
         }
-        
+
         if (postMigrationStatus.columnsExist.reminders) {
           // Check if any records need migration
           const checkResult = await request.query(`
@@ -304,7 +316,7 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
             WHERE IsScheduleWhatsAppSent = 1 AND ScheduleWhatsAppStatus = 0
           `)
           const needsMigration = checkResult.recordset[0]?.count > 0
-          
+
           if (needsMigration) {
             const updateResult = await request.query(`
               UPDATE Clinic_PatientsAppointments
@@ -318,7 +330,7 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
             }
           }
         }
-        
+
         if (postMigrationStatus.columnsExist.patients) {
           // Check if any records need migration
           const checkResult = await request.query(`
@@ -327,7 +339,7 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
             WHERE IsWhatsAppSent = 1 AND WhatsAppStatus = 0
           `)
           const needsMigration = checkResult.recordset[0]?.count > 0
-          
+
           if (needsMigration) {
             const updateResult = await request.query(`
               UPDATE Clinic_PatientsTelNumbers
@@ -341,7 +353,7 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
             }
           }
         }
-        
+
         if (migratedCount > 0) {
           console.log(`✅ Data migration completed (${migratedCount} total records migrated)`)
         } else {
@@ -352,13 +364,17 @@ export async function runMigrations(): Promise<{ success: boolean; message: stri
       }
 
       if (errorCount === 0) {
-        console.log(`✅ Database migrations completed successfully (${executedCount} statements executed)`)
+        console.log(
+          `✅ Database migrations completed successfully (${executedCount} statements executed)`
+        )
         return {
           success: true,
           message: `Migrations completed (${executedCount} statements)`
         }
       } else {
-        console.log(`⚠️  Database migrations completed with ${errorCount} warnings (${executedCount} statements executed)`)
+        console.log(
+          `⚠️  Database migrations completed with ${errorCount} warnings (${executedCount} statements executed)`
+        )
         return {
           success: true,
           message: `Migrations completed with warnings (${executedCount} statements, ${errorCount} warnings)`
@@ -435,7 +451,8 @@ export async function checkMigrationStatus(): Promise<{
       patients: row?.hasPatientStatus === 1
     }
 
-    const needsMigration = !columnsExist.appointments || !columnsExist.reminders || !columnsExist.patients
+    const needsMigration =
+      !columnsExist.appointments || !columnsExist.reminders || !columnsExist.patients
 
     return {
       needsMigration,
@@ -454,4 +471,3 @@ export async function checkMigrationStatus(): Promise<{
     }
   }
 }
-

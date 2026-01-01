@@ -392,9 +392,7 @@ function HomeScreen(): React.ReactNode {
               <div className="flex flex-col items-center p-6 bg-green-50 rounded-xl border-2 border-green-200">
                 <div className="flex items-center gap-2 mb-2">
                   <AlertCircle className="w-5 h-5 text-green-600" />
-                  <p className="text-sm font-semibold text-green-900">
-                    Scan QR Code with WhatsApp
-                  </p>
+                  <p className="text-sm font-semibold text-green-900">Scan QR Code with WhatsApp</p>
                 </div>
                 <p className="text-xs text-green-700 mb-4">
                   Open WhatsApp on your phone → Settings → Linked Devices → Link a Device

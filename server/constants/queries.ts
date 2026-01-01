@@ -392,18 +392,22 @@ export const QUERIES = {
    * Uses new status-based columns for accurate status tracking.
    * Returns messages with status mapping: 0=PENDING, 1=PROCESSING, 2=SENT, 3=FAILED
    */
-  getSentMessages: async (request: Request): Promise<IResult<{
-    messageType: string
-    status: string
-    statusCode: number
-    retryCount: number | null
-    userName: string
-    phoneNumber: string
-    datePart: string
-    timePart: string
-    processedAt: Date | null
-    id: number | null
-  }>> => {
+  getSentMessages: async (
+    request: Request
+  ): Promise<
+    IResult<{
+      messageType: string
+      status: string
+      statusCode: number
+      retryCount: number | null
+      userName: string
+      phoneNumber: string
+      datePart: string
+      timePart: string
+      processedAt: Date | null
+      id: number | null
+    }>
+  > => {
     return await request.query(`
       -- Appointment messages (initial confirmation)
       SELECT 

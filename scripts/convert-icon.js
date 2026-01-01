@@ -14,11 +14,14 @@ async function convertIcon() {
     console.log('✅ Successfully created icon.ico')
   } catch (error) {
     console.error('❌ Error converting icon:', error)
-    console.error('Note: You may need to manually convert icon.png to icon.ico using an online tool')
-    console.error('Recommended: https://convertio.co/png-ico/ or https://cloudconvert.com/png-to-ico')
+    console.error(
+      'Note: You may need to manually convert icon.png to icon.ico using an online tool'
+    )
+    console.error(
+      'Recommended: https://convertio.co/png-ico/ or https://cloudconvert.com/png-to-ico'
+    )
     process.exit(1)
   }
 }
 
 convertIcon()
-
