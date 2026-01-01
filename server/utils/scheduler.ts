@@ -1,4 +1,4 @@
-import { scheduleJob, Job } from 'node-schedule'
+import { Job, scheduleJob } from 'node-schedule'
 
 export type ScheduleDelay = 'immediate' | '1min' | '5min' | '15min' | '30min' | '1hour' | 'custom'
 
@@ -121,4 +121,3 @@ export const cancelAllJobs = (): void => {
   })
   scheduledJobs.clear()
 }
-

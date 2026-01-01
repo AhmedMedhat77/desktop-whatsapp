@@ -77,12 +77,21 @@ export const QUERIES = {
         ON Doctor.DoctorSpecialtyID = sp.ID
       INNER JOIN Clinic_PatientsTelNumbers AS Patient 
         ON Patient.PatientID = Appointment.PatientID AND Patient.BranchID = Appointment.BranchID
-      WHERE Appointment.WhatsAppStatus IN (@statusPending, @statusFailed)
+      WHERE 
+      (
+        Appointment.WhatsAppStatus IN (@statusPending, @statusFailed)
         -- Only retry failed messages if retry count is below max
-        AND (Appointment.WhatsAppStatus = @statusPending OR Appointment.WhatsAppRetryCount < @maxRetries)
+        AND (
+          Appointment.WhatsAppStatus = @statusPending 
+          OR Appointment.WhatsAppRetryCount < @maxRetries
+        )
+      )
+      OR
+      (
         -- Also claim stale PROCESSING records (worker crashed)
-        OR (Appointment.WhatsAppStatus = @statusProcessing 
-            AND Appointment.WhatsAppProcessedAt < @staleTimeout)
+        Appointment.WhatsAppStatus = @statusProcessing 
+        AND Appointment.WhatsAppProcessedAt < @staleTimeout
+      )
     `)
   },
 
@@ -184,12 +193,21 @@ export const QUERIES = {
       INNER JOIN Clinic_PatientsTelNumbers AS Patient 
         ON Patient.PatientID = Appointment.PatientID AND Patient.BranchID = Appointment.BranchID
       WHERE Appointment.WhatsAppStatus = @statusSent  -- Initial message must be sent first
-        AND Appointment.ScheduleWhatsAppStatus IN (@statusPending, @statusFailed)
-        AND (Appointment.ScheduleWhatsAppStatus = @statusPending 
-             OR Appointment.ScheduleWhatsAppRetryCount < @maxRetries)
-        -- Also claim stale PROCESSING records
-        OR (Appointment.ScheduleWhatsAppStatus = @statusProcessing 
-            AND Appointment.ScheduleWhatsAppProcessedAt < @staleTimeout)
+        AND (
+          (
+            Appointment.ScheduleWhatsAppStatus IN (@statusPending, @statusFailed)
+            AND (
+              Appointment.ScheduleWhatsAppStatus = @statusPending 
+              OR Appointment.ScheduleWhatsAppRetryCount < @maxRetries
+            )
+          )
+          OR
+          (
+            -- Also claim stale PROCESSING records
+            Appointment.ScheduleWhatsAppStatus = @statusProcessing 
+            AND Appointment.ScheduleWhatsAppProcessedAt < @staleTimeout
+          )
+        )
     `)
   },
 
@@ -276,11 +294,20 @@ export const QUERIES = {
         INSERTED.WhatsAppRetryCount,
         INSERTED.IsWhatsAppSent
       FROM Clinic_PatientsTelNumbers AS Patient
-      WHERE Patient.WhatsAppStatus IN (@statusPending, @statusFailed)
-        AND (Patient.WhatsAppStatus = @statusPending OR Patient.WhatsAppRetryCount < @maxRetries)
+      WHERE 
+      (
+        Patient.WhatsAppStatus IN (@statusPending, @statusFailed)
+        AND (
+          Patient.WhatsAppStatus = @statusPending 
+          OR Patient.WhatsAppRetryCount < @maxRetries
+        )
+      )
+      OR
+      (
         -- Also claim stale PROCESSING records
-        OR (Patient.WhatsAppStatus = @statusProcessing 
-            AND Patient.WhatsAppProcessedAt < @staleTimeout)
+        Patient.WhatsAppStatus = @statusProcessing 
+        AND Patient.WhatsAppProcessedAt < @staleTimeout
+      )
     `)
   },
 

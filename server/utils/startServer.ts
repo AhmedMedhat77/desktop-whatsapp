@@ -20,6 +20,7 @@ async function initializeModules(): Promise<void> {
   } catch (error) {
     console.error('❌ Error initializing modules:', error)
     // Don't fail server startup if modules fail to load
+    throw error
   }
 }
 
@@ -46,7 +47,7 @@ export const startServer = async (server: Server | null): Promise<Server> => {
 
   const s = app.listen(PORT, async () => {
     console.log(`Admin server is running on port ${PORT}`)
-    
+
     // CRITICAL: Run database migrations FIRST before initializing modules
     // Modules use the new columns, so migration must complete first
     try {
@@ -60,12 +61,12 @@ export const startServer = async (server: Server | null): Promise<Server> => {
       console.error('⚠️  Migration error (non-fatal):', migrationError)
       // Don't fail server startup if migrations fail - they'll be retried on next start
     }
-    
+
     // Initialize modules AFTER migration completes
     // This ensures new columns exist before modules try to use them
     // Using dynamic imports to avoid path resolution issues in compiled output
     await initializeModules()
-    
+
     // Schedule periodic cleanup of stale processing records
     scheduleStaleRecordCleanup()
   })
