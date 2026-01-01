@@ -23,7 +23,7 @@ import {
   Trash2,
   X
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 export const Route = createFileRoute('/messages/')({
   component: MessagesScreen
@@ -42,16 +42,94 @@ function MessagesScreen(): React.ReactNode {
   const [filterStatus, setFilterStatus] = useState<'all' | 'sent' | 'failed' | 'pending'>('all')
   const { toasts, removeToast, success, error: showError } = useToast()
 
-  const loadMessages = (): void => {
+  const loadMessages = useCallback(async (): Promise<void> => {
     // Prevent multiple simultaneous loads
-    if (isLoading) return
+    if (isLoading) {
+      return
+    }
 
     setIsLoading(true)
     try {
-      const storedMessages = getMessagesFromStorage()
-      console.log('Loaded messages from storage:', storedMessages.length)
+      // 1. Get manual messages from LocalStorage
+      const localMessages = getMessagesFromStorage()
+
+      // 2. Get automated messages from Database (via IPC)
+      let dbMessages: StoredMessage[] = []
+      if (window.api && typeof window.api.getSentMessages === 'function') {
+        try {
+          const sentMessages = await window.api.getSentMessages()
+          dbMessages = sentMessages.map((msg) => {
+            // Construct timestamp from datePart (yyyyMMdd) and timePart (HHmm)
+            // Prefer processedAt if available, otherwise use datePart/timePart
+            let timestamp = new Date().toISOString()
+
+            if (msg.processedAt) {
+              // Use processedAt timestamp directly if available
+              timestamp = new Date(msg.processedAt).toISOString()
+            } else if (
+              msg.datePart &&
+              msg.timePart &&
+              msg.datePart.length === 8 &&
+              msg.timePart.length === 4
+            ) {
+              const year = parseInt(msg.datePart.substring(0, 4))
+              const month = parseInt(msg.datePart.substring(4, 6)) - 1
+              const day = parseInt(msg.datePart.substring(6, 8))
+              const hour = parseInt(msg.timePart.substring(0, 2))
+              const minute = parseInt(msg.timePart.substring(2, 4))
+              timestamp = new Date(year, month, day, hour, minute).toISOString()
+            }
+
+            // Map status from database (pending, processing, sent, failed) to frontend format
+            // Database returns: 'pending' | 'processing' | 'sent' | 'failed' | 'unknown'
+            // Frontend expects: 'sent' | 'failed' | 'pending'
+            let status: 'sent' | 'failed' | 'pending' = 'pending'
+            if (msg.status === 'sent') {
+              status = 'sent'
+            } else if (msg.status === 'failed') {
+              status = 'failed'
+            } else if (msg.status === 'processing' || msg.status === 'pending') {
+              status = 'pending'
+            } else {
+              // Fallback for unknown status
+              status = msg.statusCode === 2 ? 'sent' : msg.statusCode === 3 ? 'failed' : 'pending'
+            }
+
+            // Generate unique ID
+            const uniqueId = msg.id
+              ? `db-${msg.messageType}-${msg.id}`
+              : `db-${msg.messageType}-${msg.phoneNumber}-${msg.datePart}-${msg.timePart}-${Date.now()}`
+
+            return {
+              id: uniqueId,
+              phoneNumber: msg.phoneNumber || '',
+              userName: msg.userName || 'Unknown User',
+              message: getMessageDescription(msg.messageType),
+              messageType: msg.messageType as MessageType,
+              status: status,
+              sentAt: timestamp,
+              createdAt: timestamp,
+              // Include retry count in error message if failed and has retries
+              error:
+                msg.status === 'failed' && msg.retryCount && msg.retryCount > 0
+                  ? `Failed (${msg.retryCount} retry${msg.retryCount > 1 ? 'ies' : ''})`
+                  : msg.status === 'failed'
+                    ? 'Failed to send message'
+                    : undefined
+            }
+          })
+        } catch (apiError) {
+          console.error('Failed to fetch messages from DB:', apiError)
+        }
+      }
+
+      // 3. Merge and deduplicate
+      // We prioritize LocalStorage for manual messages, and DB for automated ones
+      // Since manual messages aren't in this specific DB query (unless we added them), we just concat
+      const allMessages = [...localMessages, ...dbMessages]
+
       // Sort by date (most recent first)
-      const sortedMessages = storedMessages.sort((a, b) => {
+      const sortedMessages = allMessages.sort((a, b) => {
         try {
           const dateA = new Date(a.sentAt || a.createdAt).getTime()
           const dateB = new Date(b.sentAt || b.createdAt).getTime()
@@ -63,11 +141,35 @@ function MessagesScreen(): React.ReactNode {
       setMessages(sortedMessages)
     } catch (error) {
       console.error('Error loading messages:', error)
-      // Set empty array on error to prevent crashes
       setMessages([])
     } finally {
       setIsLoading(false)
     }
+  }, [])
+
+  // Helper to generate description based on type
+  const getMessageDescription = (type: string): string => {
+    switch (type) {
+      case 'appointment':
+        return 'Automated Appointment Confirmation'
+      case 'appointmentReminder':
+        return 'Automated Appointment Reminder'
+      case 'newPatient':
+        return 'Welcome Message for New Patient'
+      default:
+        return 'Automated Message'
+    }
+  }
+
+  // Helper to get status display text with retry info
+  const getStatusDisplay = (message: StoredMessage): string => {
+    if (message.status === 'pending') {
+      return 'PENDING'
+    }
+    if (message.status === 'failed') {
+      return message.error ? `FAILED - ${message.error}` : 'FAILED'
+    }
+    return 'SENT'
   }
 
   useEffect(() => {
@@ -80,9 +182,8 @@ function MessagesScreen(): React.ReactNode {
       console.log('sendMessage available:', typeof window.api?.sendMessage)
     }
 
+    // Load messages only once on mount
     loadMessages()
-    // Refresh messages every 2 seconds
-    const interval = setInterval(loadMessages, 2000)
 
     // Listen for new messages from the main process
     if (window.api && typeof window.api.onMessageSent === 'function') {
@@ -110,20 +211,19 @@ function MessagesScreen(): React.ReactNode {
             sentAt: data.sentAt,
             error: data.error
           })
-          loadMessages() // Refresh the list
+          // Don't auto-refresh - user can click refresh button if needed
+          // This prevents constant refreshing
         } else {
           console.log('Message skipped (duplicate):', data.phoneNumber)
         }
       })
 
-      return () => {
-        clearInterval(interval)
-        cleanup()
-      }
+      return cleanup
     }
 
-    return () => clearInterval(interval)
-  }, [])
+    // Return undefined if API is not available (no cleanup needed)
+    return undefined
+  }, []) // Empty dependency array - only run on mount
 
   const handleClearMessages = (): void => {
     if (confirm('Are you sure you want to clear all messages? This action cannot be undone.')) {
@@ -499,8 +599,9 @@ function MessagesScreen(): React.ReactNode {
                                 ? 'bg-red-100 text-red-800 border border-red-300'
                                 : 'bg-yellow-100 text-yellow-800 border border-yellow-300'
                           }`}
+                          title={message.error || message.status}
                         >
-                          {message.status.toUpperCase()}
+                          {getStatusDisplay(message)}
                         </span>
                         <span
                           className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap ${

@@ -45,7 +45,8 @@ const api = {
     reminderType: '1day' | '2days' | 'custom'
     customHours: number
     enabled: boolean
-  }) => ipcRenderer.invoke('set-appointment-reminder-settings', settings)
+  }) => ipcRenderer.invoke('set-appointment-reminder-settings', settings),
+  getSentMessages: () => ipcRenderer.invoke('get-sent-messages')
 }
 
 contextBridge.exposeInMainWorld('api', api)

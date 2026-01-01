@@ -66,6 +66,22 @@ declare global {
         customHours: number
         enabled: boolean
       }) => Promise<{ success: boolean; error?: string }>
+      getSentMessages: () => Promise<
+        Array<{
+          messageType: 'appointment' | 'appointmentReminder' | 'newPatient' | 'manual'
+          status: 'pending' | 'processing' | 'sent' | 'failed' | 'unknown'
+          statusCode: number // 0=PENDING, 1=PROCESSING, 2=SENT, 3=FAILED
+          retryCount: number | null
+          userName: string
+          phoneNumber: string
+          datePart: string // yyyyMMdd
+          timePart: string // HHmm
+          processedAt: string | null // ISO datetime string
+          id: number | null
+          // Legacy field for backward compatibility
+          isSent?: number
+        }>
+      >
     }
   }
 }

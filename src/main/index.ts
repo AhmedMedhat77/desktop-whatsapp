@@ -7,11 +7,14 @@ import {
   closeConnection,
   connectToDB,
   createDbConfigFile,
+  getConnection,
   IConfig,
   isDatabaseConnected
 } from '../../server/db'
+import { QUERIES } from '../../server/constants/queries'
 import { checkHealth, startServer, stopServer } from '../../server/utils'
 import { deleteWhatsappAuth } from '../../server/utils/deleteWhatsappAuth'
+import { runMigrations } from '../../server/db/migrations/runner'
 import {
   disconnectWhatsApp,
   getWhatsAppStatus,
@@ -200,6 +203,24 @@ ipcMain.handle('create-db-config-file', async (_, config: IConfig) => {
 ipcMain.handle('connect-to-db', async () => {
   try {
     const result = await connectToDB()
+    
+    // If connection successful, run migrations automatically
+    // IMPORTANT: This must complete before any modules try to use new columns
+    if (result.success) {
+      try {
+        console.log('🔄 Running database migrations after connection...')
+        const migrationResult = await runMigrations()
+        if (migrationResult.success) {
+          console.log('✅ Database migrations completed successfully')
+        } else {
+          console.warn('⚠️  Migration did not complete:', migrationResult.message)
+        }
+      } catch (migrationError) {
+        // Don't fail the connection if migrations fail - they'll be retried
+        console.warn('⚠️  Migration error (non-fatal):', migrationError)
+      }
+    }
+    
     return result
   } catch (error) {
     console.error('Error in connect-to-db handler:', error)
@@ -268,6 +289,22 @@ ipcMain.handle('delete-whatsapp-auth', async () => {
       success: false,
       error: error instanceof Error ? error.message : String(error)
     }
+  }
+})
+
+ipcMain.handle('get-sent-messages', async () => {
+  try {
+    const pool = await connectToDB()
+    if (!pool.success) {
+      throw new Error(pool.error || 'Database connection failed')
+    }
+    const connection = await getConnection()
+    const request = connection.request()
+    const result = await QUERIES.getSentMessages(request)
+    return result.recordset
+  } catch (error) {
+    console.error('Error fetching sent messages:', error)
+    return []
   }
 })
 
