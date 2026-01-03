@@ -121,12 +121,13 @@ export const QUERIES = {
   getAppointments: async (request: Request): Promise<IResult<Appointment>> => {
     return await request.query(`
    SELECT 
+Appointments.PatientID,
 Appointments.DoctorID,
 Appointments.TheDate AS AppointmentDate,
 Appointments.TheTime AS AppointmentTime,
 Doctors.ArbName AS DoctorArbName, 
 Doctors.EngName AS DoctorEngName,
-p.ArbName AS PatientArbNAme,
+p.ArbName AS PatientArbName,
 p.EngName AS PatientEngName,
 Doctors.DoctorSpecialtyID, 
 sp.ArbName AS SpecialtyArbName,
@@ -145,47 +146,54 @@ LEFT JOIN Clinic_PatientsTelNumbers as PatientNumber
 ON p.PatientID = PatientNumber.PatientID
     `)
   },
+
   /**
    * Add appointment to reminder queue (with duplicate prevention)
    * Only inserts if appointment doesn't already exist in queue
    */
+
   AddAppointmentToReminderQueue: async (
     request: Request,
     appointment: Appointment
   ): Promise<IResult<void>> => {
     // Use parameterized query to prevent SQL injection
+    // Provide default values for fields that might be NULL
+    request.input('PatientID', sql.Int, appointment.PatientID)
     request.input('DoctorID', sql.Int, appointment.DoctorID)
     request.input('AppointmentDate', sql.Int, appointment.AppointmentDate)
     request.input('AppointmentTime', sql.Int, appointment.AppointmentTime)
-    request.input('DoctorArbName', sql.NVarChar(255), appointment.DoctorArbName)
-    request.input('DoctorEngName', sql.NVarChar(255), appointment.DoctorEngName)
-    request.input('PatientArbName', sql.NVarChar(255), appointment.PatientArbName)
-    request.input('PatientEngName', sql.NVarChar(255), appointment.PatientEngName)
-    request.input('SpecialtyArbName', sql.NVarChar(255), appointment.SpecialtyArbName)
-    request.input('SpecialtyEngName', sql.NVarChar(255), appointment.SpecialtyEngName)
-    request.input('Number', sql.NVarChar(50), appointment.Number)
+    request.input('DoctorArbName', sql.NVarChar(255), appointment.DoctorArbName || 'غير محدد')
+    request.input('DoctorEngName', sql.NVarChar(255), appointment.DoctorEngName || 'غير محدد')
+    request.input('PatientArbName', sql.NVarChar(255), appointment.PatientArbName || 'غير محدد')
+    request.input('PatientEngName', sql.NVarChar(255), appointment.PatientEngName || 'غير محدد')
+    request.input('DoctorSpecialtyID', sql.Int, appointment.DoctorSpecialtyID || 0)
+    request.input('SpecialtyArbName', sql.NVarChar(255), appointment.SpecialtyArbName || 'غير محدد')
+    request.input('SpecialtyEngName', sql.NVarChar(255), appointment.SpecialtyEngName || 'Unknown')
+    request.input('Number', sql.NVarChar(255), appointment.Number || 'Unknown')
 
     return await request.query(`
       -- Only insert if appointment doesn't already exist (duplicate prevention)
       INSERT INTO Appointment_Message_Table (
-        DoctorID, AppointmentDate, AppointmentTime,
+        PatientID, DoctorID, AppointmentDate, AppointmentTime,
         DoctorArbName, DoctorEngName,
         PatientArbName, PatientEngName,
+        DoctorSpecialtyID,
         SpecialtyArbName, SpecialtyEngName,
-        Number, InitialMessage, ReminderMessage
+        InitialMessage, ReminderMessage
       )
       SELECT 
-        @DoctorID, @AppointmentDate, @AppointmentTime,
+        @PatientID, @DoctorID, @AppointmentDate, @AppointmentTime,
         @DoctorArbName, @DoctorEngName,
         @PatientArbName, @PatientEngName,
+        @DoctorSpecialtyID,
         @SpecialtyArbName, @SpecialtyEngName,
-        @Number, 0, 0
+        0, 0
       WHERE NOT EXISTS (
         SELECT 1 FROM Appointment_Message_Table
-        WHERE DoctorID = @DoctorID
+        WHERE PatientID = @PatientID
+          AND DoctorID = @DoctorID
           AND AppointmentDate = @AppointmentDate
           AND AppointmentTime = @AppointmentTime
-          AND Number = @Number
       )
     `)
   },
@@ -198,9 +206,15 @@ ON p.PatientID = PatientNumber.PatientID
     request: Request
   ): Promise<IResult<AppointmentMessage>> => {
     return await request.query(`
-      SELECT * FROM Appointment_Message_Table
-      WHERE InitialMessage = 0
-      ORDER BY AppointmentDate ASC, AppointmentTime ASC
+      SELECT 
+        msg.*,
+        pt.Number
+      FROM Appointment_Message_Table AS msg
+      LEFT JOIN Clinic_PatientsTelNumbers AS pt
+        ON msg.PatientID = pt.PatientID
+      WHERE msg.InitialMessage = 0
+        AND pt.Number IS NOT NULL AND pt.Number != ''
+      ORDER BY msg.AppointmentDate ASC, msg.AppointmentTime ASC
     `)
   },
 
@@ -210,9 +224,15 @@ ON p.PatientID = PatientNumber.PatientID
    */
   GetAppointmentsForReminder: async (request: Request): Promise<IResult<AppointmentMessage>> => {
     return await request.query(`
-      SELECT * FROM Appointment_Message_Table
-      WHERE InitialMessage = 1 AND ReminderMessage = 0
-      ORDER BY AppointmentDate ASC, AppointmentTime ASC
+      SELECT 
+        msg.*,
+        pt.Number
+      FROM Appointment_Message_Table AS msg
+      LEFT JOIN Clinic_PatientsTelNumbers AS pt
+        ON msg.PatientID = pt.PatientID
+      WHERE msg.InitialMessage = 1 AND msg.ReminderMessage = 0
+        AND pt.Number IS NOT NULL AND pt.Number != ''
+      ORDER BY msg.AppointmentDate ASC, msg.AppointmentTime ASC
     `)
   },
 
@@ -275,6 +295,115 @@ ON p.PatientID = PatientNumber.PatientID
       UPDATE Appointment_Message_Table
       SET ReminderMessage = 0
       WHERE ID = @ID
+    `)
+  },
+
+  /**
+   * Get all messages (sent, failed, pending) from the database for frontend display.
+   * Returns messages from Appointment_Message_Table (appointments) and Clinic_PatientsTelNumbers (patients).
+   */
+  getSentMessages: async (
+    request: Request
+  ): Promise<
+    IResult<{
+      messageType: string
+      status: string
+      statusCode: number
+      retryCount: number | null
+      userName: string
+      phoneNumber: string
+      datePart: string
+      timePart: string
+      processedAt: Date | null
+      id: number | null
+    }>
+  > => {
+    return await request.query(`
+      -- Appointment initial messages (confirmation)
+      SELECT 
+        'appointment' as messageType,
+        CASE 
+          WHEN msg.InitialMessage = 1 THEN 'sent'
+          ELSE 'pending'
+        END as status,
+        CASE 
+          WHEN msg.InitialMessage = 1 THEN 2  -- SENT
+          ELSE 0  -- PENDING
+        END as statusCode,
+        NULL as retryCount,
+        ISNULL(msg.PatientArbName, 'Unknown') as userName,
+        ISNULL(pt.Number, '') as phoneNumber,
+        CAST(msg.AppointmentDate AS VARCHAR(8)) as datePart,
+        REPLACE(STR(msg.AppointmentTime, 4, 0), ' ', '0') as timePart,
+        NULL as processedAt,  -- Could add CreatedAt or UpdatedAt if available
+        msg.ID as id
+      FROM Appointment_Message_Table AS msg
+      LEFT JOIN Clinic_PatientsTelNumbers AS pt
+        ON msg.PatientID = pt.PatientID
+      WHERE pt.Number IS NOT NULL AND pt.Number != ''
+
+      UNION ALL
+
+      -- Appointment reminder messages
+      SELECT 
+        'appointmentReminder' as messageType,
+        CASE 
+          WHEN msg.ReminderMessage = 1 THEN 'sent'
+          ELSE 'pending'
+        END as status,
+        CASE 
+          WHEN msg.ReminderMessage = 1 THEN 2  -- SENT
+          ELSE 0  -- PENDING
+        END as statusCode,
+        NULL as retryCount,
+        ISNULL(msg.PatientArbName, 'Unknown') as userName,
+        ISNULL(pt.Number, '') as phoneNumber,
+        CAST(msg.AppointmentDate AS VARCHAR(8)) as datePart,
+        REPLACE(STR(msg.AppointmentTime, 4, 0), ' ', '0') as timePart,
+        NULL as processedAt,
+        msg.ID as id
+      FROM Appointment_Message_Table AS msg
+      LEFT JOIN Clinic_PatientsTelNumbers AS pt
+        ON msg.PatientID = pt.PatientID
+      WHERE msg.InitialMessage = 1  -- Only show reminders for appointments where initial message was sent
+        AND pt.Number IS NOT NULL AND pt.Number != ''
+
+      UNION ALL
+
+      -- New patient welcome messages
+      SELECT 
+        'newPatient' as messageType,
+        CASE 
+          WHEN Patient.WhatsAppStatus = 0 THEN 'pending'
+          WHEN Patient.WhatsAppStatus = 1 THEN 'processing'
+          WHEN Patient.WhatsAppStatus = 2 THEN 'sent'
+          WHEN Patient.WhatsAppStatus = 3 THEN 'failed'
+          ELSE 'unknown'
+        END as status,
+        Patient.WhatsAppStatus as statusCode,
+        Patient.WhatsAppRetryCount as retryCount,
+        Patient.Name as userName,
+        Patient.Number as phoneNumber,
+        -- Use processedAt if available, otherwise current date
+        CASE 
+          WHEN Patient.WhatsAppProcessedAt IS NOT NULL 
+          THEN CONVERT(VARCHAR(8), Patient.WhatsAppProcessedAt, 112)
+          ELSE CONVERT(VARCHAR(8), GETDATE(), 112)
+        END as datePart,
+        CASE 
+          WHEN Patient.WhatsAppProcessedAt IS NOT NULL 
+          THEN REPLACE(CONVERT(VARCHAR(5), Patient.WhatsAppProcessedAt, 108), ':', '')
+          ELSE REPLACE(CONVERT(VARCHAR(5), GETDATE(), 108), ':', '')
+        END as timePart,
+        Patient.WhatsAppProcessedAt as processedAt,
+        Patient.ID as id
+      FROM Clinic_PatientsTelNumbers AS Patient
+      WHERE Patient.WhatsAppStatus IS NOT NULL
+        AND Patient.Number IS NOT NULL AND Patient.Number != ''
+        -- Include all statuses: PENDING, PROCESSING, SENT, FAILED
+        AND Patient.WhatsAppStatus IN (0, 1, 2, 3)
+      
+      ORDER BY processedAt DESC, datePart DESC, timePart DESC
     `)
   }
 }

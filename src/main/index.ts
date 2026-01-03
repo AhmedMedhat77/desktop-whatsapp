@@ -275,9 +275,8 @@ ipcMain.handle('delete-whatsapp-auth', async () => {
 
 ipcMain.handle('get-sent-messages', async () => {
   try {
-    const pool = await connectToDB()
-    if (!pool.success) {
-      throw new Error(pool.error || 'Database connection failed')
+    if (!isDatabaseConnected()) {
+      return []
     }
     const connection = await getConnection()
     const request = connection.request()

@@ -36,6 +36,7 @@ export interface CompanyHeader {
 }
 
 export interface Appointment {
+  PatientID: number
   DoctorID: number
   AppointmentDate: number
   AppointmentTime: number
@@ -43,6 +44,7 @@ export interface Appointment {
   DoctorEngName: string
   PatientArbName: string
   PatientEngName: string
+  DoctorSpecialtyID: number
   SpecialtyArbName: string
   SpecialtyEngName: string
   Number: string
