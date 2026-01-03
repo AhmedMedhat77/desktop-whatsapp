@@ -1,45 +1,24 @@
 import { scheduleJob } from 'node-schedule'
-import { companyHeader } from '../../constants/companyHeader'
 import { QUERIES } from '../../constants/queries'
 import { getConnection, isDatabaseConnected } from '../../db'
-import { sendMessageToPhone } from '../../utils'
-import { formatDbDate, formatDbTime } from '../../utils/formatDb'
+import { formatDbDate, formatDbTime, sendMessageToPhone } from '../../utils'
 import { FixedMessages } from '../../quiries/FixedMessages'
-import { getWorkerId } from '../../utils/workerId'
-import { WhatsAppStatus } from '../../constants/Types'
 
 /**
- * ATOMIC DATABASE-LEVEL LOCKING FOR APPOINTMENT MESSAGES
+ * Appointment Message Processing Module
  *
- * This module uses SQL Server's UPDATE ... OUTPUT clause to atomically claim
- * appointment records for processing. This ensures 100% duplicate prevention
- * even under concurrent execution (PM2, Docker, multiple instances).
+ * This module handles:
+ * 1. Adding new appointments to the reminder queue (only once per appointment)
+ * 2. Sending initial appointment confirmation messages
+ * 3. Sending reminder messages 24 hours before appointment
  *
- * HOW IT WORKS:
- * 1. claimAppointmentMessages() atomically claims up to N pending records
- *    - Only records with status PENDING (0) or stale PROCESSING (1) are claimed
- *    - UPDATE is atomic at the database level - only one worker can claim each record
- *    - Returns only the records that were successfully claimed
- *
- * 2. Process each claimed record:
- *    - Build message
- *    - Send WhatsApp message
- *    - Update status to SENT (2) or FAILED (3)
- *
- * 3. updateAppointmentMessageStatus() updates the record:
- *    - Only updates if workerId matches (prevents cross-worker updates)
- *    - Only updates if status is PROCESSING (prevents double-updates)
- *
- * WHY DUPLICATES ARE IMPOSSIBLE:
- * - Database UPDATE is atomic - two workers cannot claim the same record
- * - Status check in WHERE clause ensures only unclaimed records are processed
- * - Worker ID verification prevents one worker from updating another's records
- * - Stale timeout automatically resets crashed workers' records after 5 minutes
- *
- * This solution is production-grade and scales horizontally.
+ * Duplicate Prevention:
+ * - Uses INSERT ... WHERE NOT EXISTS to prevent duplicate queue entries
+ * - Uses atomic UPDATE to mark messages as sent before sending
+ * - Checks InitialMessage and ReminderMessage flags before processing
  */
 
-// Schedule job to watch for new appointments
+// Schedule job to watch for new appointments and process messages
 scheduleJob('*/30 * * * * *', async () => {
   try {
     // Check if database is connected first
@@ -47,147 +26,210 @@ scheduleJob('*/30 * * * * *', async () => {
       return
     }
 
-    // Check if migration columns exist before using them
-    try {
-      const pool = await getConnection()
-      const checkRequest = pool.request()
-      const checkResult = await checkRequest.query(`
-        SELECT CASE WHEN EXISTS (
-          SELECT 1 FROM sys.columns 
-          WHERE object_id = OBJECT_ID('Clinic_PatientsAppointments') 
-          AND name = 'WhatsAppStatus'
-        ) THEN 1 ELSE 0 END as hasColumn
-      `)
-      if (checkResult.recordset[0]?.hasColumn !== 1) {
-        // Migration not complete yet, skip this run
-        return
-      }
-    } catch (checkError) {
-      // If we can't check, assume columns don't exist and skip
-      console.error('Error checking for migration columns:', checkError)
-      return
-    }
-
     // Get database connection
-    let pool
-    try {
-      pool = await getConnection()
-    } catch (dbError) {
-      console.error('Error getting database connection:', dbError)
-      return
-    }
-
-    // Get unique worker ID for this process instance
-    const workerId = getWorkerId()
-
-    // ATOMIC CLAIM: Claim up to 10 pending appointment messages
-    // This query is 100% safe under concurrent execution
+    const pool = await getConnection()
     const request = pool.request()
-    const claimedResult = await QUERIES.claimAppointmentMessages(request, workerId, 10, 5)
-    const claimedAppointments = claimedResult.recordset
 
-    if (claimedAppointments.length === 0) {
-      // No appointments to process
-      return
-    }
-
-    console.log(
-      `🔍 Claimed ${claimedAppointments.length} appointment(s) for processing (Worker: ${workerId})`
-    )
-
-    // Get company header once for all messages
-    const company = await companyHeader.getCompanyHeader()
-    if (!company) {
+    // Get company header once
+    const companyHeader = await QUERIES.companyHeader(request)
+    if (!companyHeader.recordset.length) {
       console.error('Company header not found')
-      // Release claimed records by updating status back to PENDING
-      // (In production, you might want to handle this differently)
       return
     }
+    const company = companyHeader.recordset[0]
 
-    // Process each claimed appointment
-    for (const appointment of claimedAppointments) {
-      try {
-        const formattedDate = formatDbDate(appointment.TheDate)
-        const formattedTime = formatDbTime(appointment.TheTime)
+    // ============================================
+    // STEP 1: Add new appointments to reminder queue
+    // ============================================
+    try {
+      const appointments = await QUERIES.getAppointments(request)
 
-        const message = FixedMessages.AppointmentMessage(
-          appointment,
-          formattedDate,
-          formattedTime,
-          company
-        )
+      if (appointments.recordset.length > 0) {
+        const installationDate = '2026-01-03' // Only process appointments after this date
+        let addedCount = 0
 
-        console.log(
-          `📨 Sending appointment message to ${appointment.Name} (${appointment.Number}) - Appointment: ${formattedDate} ${formattedTime}`
-        )
+        for (const appointment of appointments.recordset) {
+          try {
+            // Check if appointment date is on or after installation date
+            const appointmentDateStr = formatDbDate(appointment.AppointmentDate)
+            if (appointmentDateStr < installationDate) {
+              // Skip old appointments before installation
+              continue
+            }
 
-        // Send the WhatsApp message
-        const result = await sendMessageToPhone(
-          appointment.Number,
-          message,
-          'appointment',
-          appointment.Name
-        )
-
-        // Update status based on send result
-        const updateRequest = pool.request()
-        if (result.success) {
-          const rowsAffected = await QUERIES.updateAppointmentMessageStatus(
-            updateRequest,
-            appointment,
-            WhatsAppStatus.SENT,
-            workerId
-          )
-
-          if (rowsAffected > 0) {
-            console.log(
-              `✅ Appointment message sent successfully to ${appointment.Name} (Date: ${formattedDate}, Time: ${formattedTime})`
-            )
-          } else {
-            console.warn(
-              `⚠️ Failed to update status for appointment ${appointment.Name} - record may have been claimed by another worker`
-            )
-          }
-        } else {
-          // Mark as FAILED - will be retried (up to max retries)
-          const rowsAffected = await QUERIES.updateAppointmentMessageStatus(
-            updateRequest,
-            appointment,
-            WhatsAppStatus.FAILED,
-            workerId
-          )
-
-          if (rowsAffected > 0) {
-            console.error(
-              `❌ Failed to send appointment message to ${appointment.Name}: ${result.error} (Will retry)`
-            )
+            // Add to queue (query handles duplicate prevention)
+            const insertResult = await QUERIES.AddAppointmentToReminderQueue(request, appointment)
+            if (insertResult.rowsAffected && insertResult.rowsAffected[0] > 0) {
+              addedCount++
+            }
+          } catch (addError) {
+            // Log but continue with other appointments
+            console.error('Error adding appointment to queue:', addError)
           }
         }
-      } catch (appointmentError) {
-        // Mark as FAILED on exception
-        try {
-          const updateRequest = pool.request()
-          await QUERIES.updateAppointmentMessageStatus(
-            updateRequest,
-            appointment,
-            WhatsAppStatus.FAILED,
-            workerId
-          )
-        } catch (updateError) {
-          console.error(
-            `❌ Failed to update status after error for ${appointment.Name}:`,
-            updateError
-          )
-        }
 
-        console.error(
-          `❌ Error processing appointment message for ${appointment.Name}:`,
-          appointmentError
-        )
-        // Continue with next appointment
+        if (addedCount > 0) {
+          console.log(`✅ Added ${addedCount} new appointment(s) to reminder queue`)
+        }
       }
+    } catch (addQueueError) {
+      console.error('Error processing appointments for queue:', addQueueError)
+      // Continue to message processing even if queue addition fails
+    }
+
+    // ============================================
+    // STEP 2: Process initial messages (send confirmation)
+    // ============================================
+    try {
+      // Get appointments that need initial message (InitialMessage = 0)
+      const reminderQueue = await QUERIES.GetAppointmentFromReminderQueue(request)
+
+      if (reminderQueue.recordset.length > 0) {
+        for (const reminder of reminderQueue.recordset) {
+          try {
+            // Skip if initial message already sent
+            if (reminder.InitialMessage === 1) {
+              continue
+            }
+
+            // Check if phone number exists
+            if (!reminder.Number || reminder.Number.trim() === '') {
+              console.warn(`⚠️  Skipping appointment ${reminder.ID}: No phone number`)
+              continue
+            }
+
+            // ATOMIC UPDATE: Mark as processing before sending (prevents duplicates)
+            const updateResult = await QUERIES.updateAppointmentInitialMessage(request, reminder)
+            if (!updateResult.rowsAffected || updateResult.rowsAffected[0] === 0) {
+              // Another worker may have already processed this
+              console.log(`⏭️  Appointment ${reminder.ID} already processed by another worker`)
+              continue
+            }
+
+            // Send initial appointment confirmation message
+            const message = FixedMessages.AppointmentMessage(reminder, company)
+            const sendResult = await sendMessageToPhone(
+              reminder.Number,
+              message,
+              'appointment',
+              reminder.PatientArbName
+            )
+
+            if (sendResult.success) {
+              console.log(
+                `✅ Initial message sent to ${reminder.PatientArbName} (${reminder.Number}) - Appointment: ${formatDbDate(reminder.AppointmentDate)} ${formatDbTime(reminder.AppointmentTime)}`
+              )
+            } else {
+              console.error(
+                `❌ Failed to send initial message to ${reminder.PatientArbName}: ${sendResult.error}`
+              )
+              // Reset InitialMessage flag on failure so it can be retried
+              await QUERIES.resetAppointmentInitialMessage(request, reminder)
+            }
+          } catch (initialMessageError) {
+            console.error(
+              `Error sending initial message for appointment ${reminder.ID}:`,
+              initialMessageError
+            )
+            // Reset flag on error so it can be retried
+            try {
+              await QUERIES.resetAppointmentInitialMessage(request, reminder)
+            } catch (resetError) {
+              console.error('Error resetting initial message flag:', resetError)
+            }
+          }
+        }
+      }
+    } catch (initialMessageError) {
+      console.error('Error processing initial messages:', initialMessageError)
+    }
+
+    // ============================================
+    // STEP 3: Process reminder messages (24 hours before appointment)
+    // ============================================
+    try {
+      // Get appointments that need reminder message
+      // Must have InitialMessage = 1 (initial sent) AND ReminderMessage = 0 (reminder not sent)
+      const reminderQueue = await QUERIES.GetAppointmentsForReminder(request)
+
+      if (reminderQueue.recordset.length > 0) {
+        const now = new Date()
+
+        for (const reminder of reminderQueue.recordset) {
+          try {
+            // Skip if reminder already sent
+            if (reminder.ReminderMessage === 1) {
+              continue
+            }
+
+            // Skip if initial message not sent yet
+            if (reminder.InitialMessage !== 1) {
+              continue
+            }
+
+            // Check if phone number exists
+            if (!reminder.Number || reminder.Number.trim() === '') {
+              console.warn(`⚠️  Skipping reminder for appointment ${reminder.ID}: No phone number`)
+              continue
+            }
+
+            // Calculate appointment datetime
+            const appointmentDateStr = formatDbDate(reminder.AppointmentDate)
+            const appointmentTimeStr = formatDbTime(reminder.AppointmentTime)
+            const appointmentDateTime = new Date(`${appointmentDateStr} ${appointmentTimeStr}`)
+
+            // Calculate time difference
+            const diffTime = appointmentDateTime.getTime() - now.getTime()
+            const diffHours = diffTime / (1000 * 60 * 60) // Convert to hours
+
+            // Send reminder if appointment is within next 24 hours (and in the future)
+            if (diffHours > 0 && diffHours <= 24) {
+              // ATOMIC UPDATE: Mark reminder as processing before sending (prevents duplicates)
+              const updateResult = await QUERIES.updateAppointmentReminderMessage(request, reminder)
+              if (!updateResult.rowsAffected || updateResult.rowsAffected[0] === 0) {
+                // Another worker may have already processed this
+                console.log(
+                  `⏭️  Reminder for appointment ${reminder.ID} already processed by another worker`
+                )
+                continue
+              }
+
+              // Send reminder message
+              const message = FixedMessages.ScheduleMessage(reminder, company)
+              const sendResult = await sendMessageToPhone(
+                reminder.Number,
+                message,
+                'appointmentReminder',
+                reminder.PatientArbName
+              )
+
+              if (sendResult.success) {
+                console.log(
+                  `✅ Reminder sent to ${reminder.PatientArbName} (${reminder.Number}) - Appointment: ${formatDbDate(reminder.AppointmentDate)} ${formatDbTime(reminder.AppointmentTime)}`
+                )
+              } else {
+                console.error(
+                  `❌ Failed to send reminder to ${reminder.PatientArbName}: ${sendResult.error}`
+                )
+                // Reset ReminderMessage flag on failure so it can be retried
+                await QUERIES.resetAppointmentReminderMessage(request, reminder)
+              }
+            }
+          } catch (reminderError) {
+            console.error(`Error sending reminder for appointment ${reminder.ID}:`, reminderError)
+            // Reset flag on error so it can be retried
+            try {
+              await QUERIES.resetAppointmentReminderMessage(request, reminder)
+            } catch (resetError) {
+              console.error('Error resetting reminder message flag:', resetError)
+            }
+          }
+        }
+      }
+    } catch (reminderError) {
+      console.error('Error processing reminder messages:', reminderError)
     }
   } catch (err) {
-    console.error('Error watching Appointments:', err)
+    console.error('Error in appointment processing:', err)
   }
 })

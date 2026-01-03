@@ -36,27 +36,32 @@ export interface CompanyHeader {
 }
 
 export interface Appointment {
-  IsScheduleWhatsAppSent: number // Legacy field
-  IsWhatsAppSent: number // Legacy field
   DoctorID: number
-  PatientID: number
-  BranchID: number
-  TheTime: number
-  TheDate: number
+  AppointmentDate: number
+  AppointmentTime: number
   DoctorArbName: string
-  ClinicDepartmentID: number
+  DoctorEngName: string
+  PatientArbName: string
+  PatientEngName: string
   SpecialtyArbName: string
   SpecialtyEngName: string
   Number: string
-  Name: string
-  // New status-based fields for initial appointment messages
-  WhatsAppStatus?: number
-  WhatsAppWorkerID?: string
-  WhatsAppProcessedAt?: Date
-  WhatsAppRetryCount?: number
-  // New status-based fields for scheduled reminder messages
-  ScheduleWhatsAppStatus?: number
-  ScheduleWhatsAppWorkerID?: string
-  ScheduleWhatsAppProcessedAt?: Date
-  ScheduleWhatsAppRetryCount?: number
+}
+
+export interface AppointmentMessage {
+  ID: number
+  PatientID: number
+  DoctorID: number
+  AppointmentDate: number
+  AppointmentTime: number
+  DoctorArbName: string
+  DoctorEngName: string
+  PatientArbName: string
+  PatientEngName: string
+  DoctorSpecialtyID: number
+  SpecialtyArbName: string
+  SpecialtyEngName: string
+  InitialMessage: number
+  ReminderMessage: number
+  Number: string
 }

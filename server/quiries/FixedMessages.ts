@@ -1,18 +1,14 @@
-import { Appointment, CompanyHeader, Patient } from '../constants/Types'
+import { AppointmentMessage, CompanyHeader, Patient } from '../constants/Types'
+import { formatDbDate, formatDbTime } from '../utils'
 
 export const FixedMessages = {
-  AppointmentMessage: (
-    appointment: Appointment,
-    formattedDate: string,
-    formattedTime: string,
-    company: CompanyHeader
-  ) => {
+  AppointmentMessage: (appointment: AppointmentMessage, company: CompanyHeader) => {
     const message = `
-مرحباً ${appointment.Name || 'مريض'}،
+مرحباً ${appointment.PatientArbName || 'مريض'}،
 
 تم حجز موعدك بنجاح مع الدكتور/ة ${appointment.DoctorArbName || 'غير محدد'} في قسم ${appointment.SpecialtyArbName || 'غير محدد'}.
-📅 التاريخ: ${formattedDate}
-⏰ الوقت: ${formattedTime}
+📅 التاريخ: ${formatDbDate(appointment.AppointmentDate)}
+⏰ الوقت: ${formatDbTime(appointment.AppointmentTime)}
 ${company?.CompanyArbName ? `في *${company.CompanyArbName}*` : ''}
 ${company?.ArbAddress ? `📍 العنوان: ${company.ArbAddress}` : ''}
 ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
@@ -22,18 +18,13 @@ ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}
     return message
   },
 
-  ScheduleMessage: (
-    appointment: Appointment,
-    formattedDate: string,
-    formattedTime: string,
-    company: CompanyHeader
-  ) => {
+  ScheduleMessage: (appointment: AppointmentMessage, company: CompanyHeader) => {
     const message = `
-    مرحباً ${appointment.Name || 'مريض'}،
+    مرحباً ${appointment.PatientArbName || 'مريض'}،
     
     تذكير: لديك موعد قادم مع الدكتور/ة ${appointment.DoctorArbName || 'غير محدد'} في قسم ${appointment.SpecialtyArbName || 'غير محدد'}.
-    📅 التاريخ: ${formattedDate}
-    ⏰ الوقت: ${formattedTime}
+    📅 التاريخ: ${formatDbDate(appointment.AppointmentDate)}
+    ⏰ الوقت: ${formatDbTime(appointment.AppointmentTime)}
     ${company?.CompanyArbName ? `في *${company.CompanyArbName}*` : ''}
     ${company?.ArbAddress ? `📍 العنوان: ${company.ArbAddress}` : ''}
     ${company?.ArbTel ? `📞 الهاتف: ${company.ArbTel}` : ''}

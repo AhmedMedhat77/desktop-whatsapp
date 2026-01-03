@@ -1,15 +1,15 @@
 import { getConnection, isDatabaseConnected } from '../db'
 import { WhatsAppStatus } from '../constants/Types'
-
+import { scheduleJob } from 'node-schedule'
 /**
  * Cleanup Stale Processing Records
- * 
+ *
  * This utility resets PROCESSING records that have been stuck for more than
  * the specified timeout. This handles cases where a worker crashed while processing
  * a record, leaving it in PROCESSING state indefinitely.
- * 
+ *
  * Run this periodically (e.g., every 10 minutes) via a scheduled job or cron.
- * 
+ *
  * @param staleTimeoutMinutes - Minutes after which a PROCESSING record is considered stale (default: 5)
  * @returns Number of records reset
  */
@@ -31,8 +31,9 @@ export async function cleanupStaleRecords(
     request.input('statusProcessing', WhatsAppStatus.PROCESSING)
     request.input('staleTimeout', staleTimeout)
 
+    // Reset stale appointment messages from queue table
     const appointmentResult = await request.query(`
-      UPDATE Clinic_PatientsAppointments
+      UPDATE WhatsApp_AppointmentQueue
       SET 
         WhatsAppStatus = @statusPending,
         WhatsAppWorkerID = NULL,
@@ -44,15 +45,15 @@ export async function cleanupStaleRecords(
     `)
     const appointmentsReset = appointmentResult.recordset[0]?.rowsAffected || 0
 
-    // Reset stale appointment reminders
+    // Reset stale appointment reminders from reminder queue table
     const reminderResult = await request.query(`
-      UPDATE Clinic_PatientsAppointments
+      UPDATE WhatsApp_AppointmentReminderQueue
       SET 
-        ScheduleWhatsAppStatus = @statusPending,
-        ScheduleWhatsAppWorkerID = NULL,
-        ScheduleWhatsAppProcessedAt = NULL
-      WHERE ScheduleWhatsAppStatus = @statusProcessing
-        AND ScheduleWhatsAppProcessedAt < @staleTimeout
+        WhatsAppStatus = @statusPending,
+        WhatsAppWorkerID = NULL,
+        WhatsAppProcessedAt = NULL
+      WHERE WhatsAppStatus = @statusProcessing
+        AND WhatsAppProcessedAt < @staleTimeout
       
       SELECT @@ROWCOUNT as rowsAffected
     `)
@@ -94,13 +95,9 @@ export async function cleanupStaleRecords(
  * Run every 10 minutes
  */
 export function scheduleStaleRecordCleanup(): void {
-  const { scheduleJob } = require('node-schedule')
-  
   scheduleJob('*/10 * * * *', async () => {
     await cleanupStaleRecords(5) // 5 minute timeout
   })
-  
+
   console.log('✅ Stale record cleanup scheduled (runs every 10 minutes)')
 }
-
-

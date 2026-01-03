@@ -3,6 +3,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { Server } from 'http'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
+import { QUERIES } from '../../server/constants/queries'
 import {
   closeConnection,
   connectToDB,
@@ -11,10 +12,19 @@ import {
   IConfig,
   isDatabaseConnected
 } from '../../server/db'
-import { QUERIES } from '../../server/constants/queries'
 import { checkHealth, startServer, stopServer } from '../../server/utils'
+import {
+  getReminderSettings,
+  saveReminderSettings,
+  type AppointmentReminderSettings
+} from '../../server/utils/appointmentReminderSettings'
 import { deleteWhatsappAuth } from '../../server/utils/deleteWhatsappAuth'
-import { runMigrations } from '../../server/db/migrations/runner'
+import {
+  cancelJob,
+  getScheduledJobs,
+  ScheduleDelay,
+  scheduleDelayedJob
+} from '../../server/utils/scheduler'
 import {
   disconnectWhatsApp,
   getWhatsAppStatus,
@@ -22,17 +32,6 @@ import {
   sendMessageToPhone,
   setMainWindow
 } from '../../server/utils/whatsapp'
-import {
-  scheduleDelayedJob,
-  cancelJob,
-  getScheduledJobs,
-  ScheduleDelay
-} from '../../server/utils/scheduler'
-import {
-  getReminderSettings,
-  saveReminderSettings,
-  type AppointmentReminderSettings
-} from '../../server/utils/appointmentReminderSettings'
 
 let adminServer: Server | null = null
 let mainWindow: BrowserWindow | null = null
@@ -203,24 +202,6 @@ ipcMain.handle('create-db-config-file', async (_, config: IConfig) => {
 ipcMain.handle('connect-to-db', async () => {
   try {
     const result = await connectToDB()
-    
-    // If connection successful, run migrations automatically
-    // IMPORTANT: This must complete before any modules try to use new columns
-    if (result.success) {
-      try {
-        console.log('🔄 Running database migrations after connection...')
-        const migrationResult = await runMigrations()
-        if (migrationResult.success) {
-          console.log('✅ Database migrations completed successfully')
-        } else {
-          console.warn('⚠️  Migration did not complete:', migrationResult.message)
-        }
-      } catch (migrationError) {
-        // Don't fail the connection if migrations fail - they'll be retried
-        console.warn('⚠️  Migration error (non-fatal):', migrationError)
-      }
-    }
-    
     return result
   } catch (error) {
     console.error('Error in connect-to-db handler:', error)
