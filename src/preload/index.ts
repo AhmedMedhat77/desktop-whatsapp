@@ -45,6 +45,7 @@ const api = {
     reminderType: '1day' | '2days' | 'custom'
     customHours: number
     enabled: boolean
+    startFrom?: string // ISO date string (YYYY-MM-DD)
   }) => ipcRenderer.invoke('set-appointment-reminder-settings', settings),
   getSentMessages: () => ipcRenderer.invoke('get-sent-messages')
 }

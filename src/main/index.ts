@@ -370,7 +370,8 @@ ipcMain.handle('get-appointment-reminder-settings', async () => {
     return {
       reminderType: '1day',
       customHours: 24,
-      enabled: true
+      enabled: true,
+      startFrom: new Date().toISOString().split('T')[0]
     }
   }
 })

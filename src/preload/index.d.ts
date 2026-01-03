@@ -60,11 +60,13 @@ declare global {
         reminderType: '1day' | '2days' | 'custom'
         customHours: number
         enabled: boolean
+        startFrom?: string // ISO date string (YYYY-MM-DD)
       }>
       setAppointmentReminderSettings: (settings: {
         reminderType: '1day' | '2days' | 'custom'
         customHours: number
         enabled: boolean
+        startFrom?: string // ISO date string (YYYY-MM-DD)
       }) => Promise<{ success: boolean; error?: string }>
       getSentMessages: () => Promise<
         Array<{

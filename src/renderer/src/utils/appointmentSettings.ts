@@ -4,6 +4,7 @@ export interface AppointmentReminderSettings {
   reminderType: ReminderType
   customHours: number // For custom type
   enabled: boolean
+  startFrom?: string // ISO date string (YYYY-MM-DD), optional for backward compatibility
 }
 
 const STORAGE_KEY = 'appointment_reminder_settings'
@@ -79,4 +80,3 @@ export const getReminderTimeHours = (settings: AppointmentReminderSettings): num
       return 24
   }
 }
-

@@ -3,6 +3,7 @@ import { QUERIES } from '../../constants/queries'
 import { getConnection, isDatabaseConnected } from '../../db'
 import { FixedMessages } from '../../quiries/FixedMessages'
 import { formatDbDate, formatDbTime, sendMessageToPhone } from '../../utils'
+import { getReminderSettings, getReminderTimeMs } from '../../utils/appointmentReminderSettings'
 
 /**
  * Appointment Message Processing Module
@@ -50,7 +51,9 @@ scheduleJob('*/30 * * * * *', async () => {
       const appointments = await QUERIES.getAppointments(headerRequest)
 
       if (appointments.recordset.length > 0) {
-        const installationDate = '2026-01-03' // Only process appointments after this date
+        // Get startFrom date from settings (defaults to today if not set)
+        const settings = getReminderSettings()
+        const installationDate = settings.startFrom || new Date().toISOString().split('T')[0]
         let addedCount = 0
         let skippedCount = 0
 
@@ -235,10 +238,23 @@ scheduleJob('*/30 * * * * *', async () => {
     }
 
     // ============================================
-    // PHASE 3: Process reminder messages (24 hours before appointment)
+    // PHASE 3: Process reminder messages (based on settings: 1day, 2days, or custom hours)
     // Get appointments from message table that need reminder sent
     // ============================================
     try {
+      // Get reminder settings to determine timing
+      const reminderSettings = getReminderSettings()
+
+      // Skip reminder processing if reminders are disabled
+      if (!reminderSettings.enabled) {
+        console.log('⏭️  Phase 3: Reminders are disabled in settings, skipping reminder processing')
+        return
+      }
+
+      // Calculate reminder time window in hours from settings
+      const reminderTimeMs = getReminderTimeMs(reminderSettings)
+      const reminderHours = reminderTimeMs / (1000 * 60 * 60) // Convert milliseconds to hours
+
       // Get appointments that need reminder message
       // Must have InitialMessage = 1 (initial sent) AND ReminderMessage = 0 (reminder not sent)
       const reminderRequest = pool.request()
@@ -246,7 +262,7 @@ scheduleJob('*/30 * * * * *', async () => {
 
       if (reminderQueue.recordset.length > 0) {
         console.log(
-          `📨 Phase 3: Processing ${reminderQueue.recordset.length} appointment(s) for reminder messages...`
+          `📨 Phase 3: Processing ${reminderQueue.recordset.length} appointment(s) for reminder messages (${reminderHours} hours before appointment)...`
         )
         const now = new Date()
         let sentCount = 0
@@ -281,8 +297,8 @@ scheduleJob('*/30 * * * * *', async () => {
             const diffTime = appointmentDateTime.getTime() - now.getTime()
             const diffHours = diffTime / (1000 * 60 * 60) // Convert to hours
 
-            // Send reminder if appointment is within next 24 hours (and in the future)
-            if (diffHours > 0 && diffHours <= 24) {
+            // Send reminder if appointment is within the configured reminder window (and in the future)
+            if (diffHours > 0 && diffHours <= reminderHours) {
               // ATOMIC UPDATE: Mark reminder as processing before sending (prevents duplicates)
               const updateRequest = pool.request()
               const updateResult = await QUERIES.updateAppointmentReminderMessage(
@@ -319,7 +335,7 @@ scheduleJob('*/30 * * * * *', async () => {
                 await QUERIES.resetAppointmentReminderMessage(resetRequest, reminder)
               }
             } else {
-              // Not within 24 hours window
+              // Not within reminder window
               skippedCount++
             }
           } catch (reminderError) {
@@ -336,7 +352,7 @@ scheduleJob('*/30 * * * * *', async () => {
 
         // Summary of reminder message phase
         console.log(
-          `✅ Phase 3 Complete: Sent ${sentCount} reminder(s), Failed ${failedCount}, Skipped ${skippedCount} (not within 24h window)`
+          `✅ Phase 3 Complete: Sent ${sentCount} reminder(s), Failed ${failedCount}, Skipped ${skippedCount} (not within ${reminderHours}h window)`
         )
       }
     } catch (reminderError) {

@@ -43,11 +43,6 @@ function MessagesScreen(): React.ReactNode {
   const { toasts, removeToast, success, error: showError } = useToast()
 
   const loadMessages = useCallback(async (): Promise<void> => {
-    // Prevent multiple simultaneous loads
-    if (isLoading) {
-      return
-    }
-
     setIsLoading(true)
     try {
       // 1. Get manual messages from LocalStorage
@@ -91,20 +86,65 @@ function MessagesScreen(): React.ReactNode {
             } else if (msg.status === 'processing' || msg.status === 'pending') {
               status = 'pending'
             } else {
-              // Fallback for unknown status
-              status = msg.statusCode === 2 ? 'sent' : msg.statusCode === 3 ? 'failed' : 'pending'
+              // Fallback: use statusCode if status is unknown
+              // statusCode: 0=PENDING, 1=PROCESSING, 2=SENT, 3=FAILED
+              if (msg.statusCode === 2) {
+                status = 'sent'
+              } else if (msg.statusCode === 3) {
+                status = 'failed'
+              } else {
+                status = 'pending'
+              }
             }
 
-            // Generate unique ID
+            // Generate unique ID based on message type and ID
             const uniqueId = msg.id
               ? `db-${msg.messageType}-${msg.id}`
-              : `db-${msg.messageType}-${msg.phoneNumber}-${msg.datePart}-${msg.timePart}-${Date.now()}`
+              : `db-${msg.messageType}-${msg.phoneNumber}-${msg.datePart || ''}-${msg.timePart || ''}-${Date.now()}`
+
+            // Format appointment date/time for message description
+            let messageDescription = getMessageDescription(msg.messageType)
+            if (
+              (msg.messageType === 'appointment' || msg.messageType === 'appointmentReminder') &&
+              msg.datePart &&
+              msg.timePart &&
+              msg.datePart.length === 8 &&
+              msg.timePart.length === 4
+            ) {
+              try {
+                const year = parseInt(msg.datePart.substring(0, 4))
+                const month = parseInt(msg.datePart.substring(4, 6)) - 1
+                const day = parseInt(msg.datePart.substring(6, 8))
+                const hour = parseInt(msg.timePart.substring(0, 2))
+                const minute = parseInt(msg.timePart.substring(2, 4))
+                const appointmentDate = new Date(year, month, day, hour, minute)
+                const formattedDate = appointmentDate.toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric'
+                })
+                const formattedTime = appointmentDate.toLocaleTimeString('en-US', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: true
+                })
+
+                if (msg.messageType === 'appointment') {
+                  messageDescription = `Appointment Confirmation - ${formattedDate} at ${formattedTime}`
+                } else if (msg.messageType === 'appointmentReminder') {
+                  messageDescription = `Appointment Reminder - ${formattedDate} at ${formattedTime}`
+                }
+              } catch (e) {
+                // If date parsing fails, use default description
+                console.warn('Failed to parse appointment date:', e)
+              }
+            }
 
             return {
               id: uniqueId,
               phoneNumber: msg.phoneNumber || '',
               userName: msg.userName || 'Unknown User',
-              message: getMessageDescription(msg.messageType),
+              message: messageDescription,
               messageType: msg.messageType as MessageType,
               status: status,
               sentAt: timestamp,
@@ -112,7 +152,7 @@ function MessagesScreen(): React.ReactNode {
               // Include retry count in error message if failed and has retries
               error:
                 msg.status === 'failed' && msg.retryCount && msg.retryCount > 0
-                  ? `Failed (${msg.retryCount} retry${msg.retryCount > 1 ? 'ies' : ''})`
+                  ? `Failed after ${msg.retryCount} retry${msg.retryCount > 1 ? 'ies' : ''}`
                   : msg.status === 'failed'
                     ? 'Failed to send message'
                     : undefined
@@ -151,13 +191,15 @@ function MessagesScreen(): React.ReactNode {
   const getMessageDescription = (type: string): string => {
     switch (type) {
       case 'appointment':
-        return 'Automated Appointment Confirmation'
+        return 'Appointment Confirmation Message'
       case 'appointmentReminder':
-        return 'Automated Appointment Reminder'
+        return 'Appointment Reminder Message'
       case 'newPatient':
         return 'Welcome Message for New Patient'
+      case 'manual':
+        return 'Manual Message'
       default:
-        return 'Automated Message'
+        return 'Message'
     }
   }
 
@@ -223,6 +265,7 @@ function MessagesScreen(): React.ReactNode {
 
     // Return undefined if API is not available (no cleanup needed)
     return undefined
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Empty dependency array - only run on mount
 
   const handleClearMessages = (): void => {

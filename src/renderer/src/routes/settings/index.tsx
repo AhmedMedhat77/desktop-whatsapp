@@ -32,7 +32,7 @@ function SettingsScreen(): React.ReactNode {
   const [enabled, setEnabled] = useState<boolean>(true)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-
+  const [startFrom, setStartFrom] = useState<Date>(new Date())
   // Database Configuration
   const {
     register,
@@ -128,6 +128,10 @@ function SettingsScreen(): React.ReactNode {
       setReminderType(settings.reminderType)
       setCustomHours(settings.customHours)
       setEnabled(settings.enabled)
+      // Load startFrom date if it exists, otherwise use today
+      if (settings.startFrom) {
+        setStartFrom(new Date(settings.startFrom))
+      }
     } catch (error) {
       console.error('Error loading settings:', error)
       showError('Error loading reminder settings')
@@ -142,7 +146,8 @@ function SettingsScreen(): React.ReactNode {
       const result = await window.api.setAppointmentReminderSettings({
         reminderType,
         customHours,
-        enabled
+        enabled,
+        startFrom: startFrom.toISOString().split('T')[0] // Save as YYYY-MM-DD format
       })
 
       if (result.success) {
@@ -156,7 +161,7 @@ function SettingsScreen(): React.ReactNode {
     } finally {
       setIsSaving(false)
     }
-  }, [reminderType, customHours, enabled, success, showError])
+  }, [reminderType, customHours, enabled, startFrom, success, showError])
 
   const reminderOptions: Array<{ value: ReminderType; label: string }> = [
     { value: '1day', label: '1 Day Before' },
@@ -291,7 +296,7 @@ function SettingsScreen(): React.ReactNode {
               <div>
                 <label
                   htmlFor="db-password"
-                  className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2"
+                  className=" text-sm font-medium text-gray-700 mb-2 flex items-center gap-2"
                 >
                   <Key className="w-4 h-4 text-gray-500" />
                   Password
@@ -438,6 +443,18 @@ function SettingsScreen(): React.ReactNode {
                     : `Reminders will be sent ${customHours} hour${customHours !== 1 ? 's' : ''} before appointments`
                 : 'Reminders are currently disabled'}
             </p>
+          </div>
+
+          {/* Start From  */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Start From</label>
+            <Input
+              type="date"
+              value={startFrom.toISOString().split('T')[0]}
+              onChange={(e) => setStartFrom(new Date(e.target.value))}
+              disabled={isLoading || isSaving}
+              placeholder="Select a date"
+            />
           </div>
 
           {/* Save Button */}

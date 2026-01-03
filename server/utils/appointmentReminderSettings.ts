@@ -7,6 +7,7 @@ export interface AppointmentReminderSettings {
   reminderType: ReminderType
   customHours: number
   enabled: boolean
+  startFrom?: string // ISO date string (YYYY-MM-DD), optional for backward compatibility
 }
 
 const SETTINGS_FILE = path.join(process.cwd(), '.appointment-reminder-settings.json')
@@ -32,7 +33,8 @@ export const getReminderSettings = (): AppointmentReminderSettings => {
     return {
       ...DEFAULT_SETTINGS,
       ...settings,
-      customHours: settings.customHours || DEFAULT_SETTINGS.customHours
+      customHours: settings.customHours || DEFAULT_SETTINGS.customHours,
+      startFrom: settings.startFrom // Preserve startFrom if it exists
     }
   } catch (error) {
     console.error('Error reading reminder settings:', error)
