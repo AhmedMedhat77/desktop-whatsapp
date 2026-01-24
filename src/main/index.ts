@@ -26,6 +26,7 @@ import {
   scheduleDelayedJob
 } from '../../server/utils/scheduler'
 import {
+  cleanupWhatsAppSession,
   disconnectWhatsApp,
   getWhatsAppStatus,
   initializeWhatsapp,
@@ -266,6 +267,19 @@ ipcMain.handle('delete-whatsapp-auth', async () => {
     return { success: true }
   } catch (error) {
     console.error('Error deleting WhatsApp auth:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+})
+
+ipcMain.handle('cleanup-whatsapp-session', async () => {
+  try {
+    cleanupWhatsAppSession()
+    return { success: true }
+  } catch (error) {
+    console.error('Error cleaning up WhatsApp session:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error)

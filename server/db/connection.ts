@@ -59,17 +59,7 @@ export const connectToDB = async (): Promise<ConnectionResult> => {
         connectionConfig.server.startsWith('127.0.0.1:')
 
       // On Windows, handle SSL/TLS certificate issues
-      // Windows may have stricter certificate validation than macOS
-      const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED
-      // Only modify if not already set (allows environment override)
-      // This helps with self-signed certificates or Windows certificate store issues
-      const shouldDisableTLSValidation = isWindows && !process.env.NODE_TLS_REJECT_UNAUTHORIZED
-      if (shouldDisableTLSValidation) {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
-        console.log(
-          '⚠️  Windows detected: Temporarily disabling strict TLS validation for database connection'
-        )
-      }
+      // We will rely on mssql options trustServerCertificate: true instead of global process mutation
 
       // For localhost, we'll try with encryption first, then fallback to no encryption if TLS fails
       const shouldTryWithoutEncryption = isLocalhost
@@ -110,24 +100,7 @@ export const connectToDB = async (): Promise<ConnectionResult> => {
 
         if (result && result.recordset) {
           console.log('Database connection successful')
-          // Restore original TLS setting after successful connection
-          if (shouldDisableTLSValidation) {
-            if (originalRejectUnauthorized !== undefined) {
-              process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized
-            } else {
-              delete process.env.NODE_TLS_REJECT_UNAUTHORIZED
-            }
-          }
           return { success: true }
-        }
-
-        // Restore original TLS setting on failure
-        if (shouldDisableTLSValidation) {
-          if (originalRejectUnauthorized !== undefined) {
-            process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized
-          } else {
-            delete process.env.NODE_TLS_REJECT_UNAUTHORIZED
-          }
         }
 
         return {
@@ -172,14 +145,6 @@ export const connectToDB = async (): Promise<ConnectionResult> => {
 
             if (result && result.recordset) {
               console.log('Database connection successful (without encryption)')
-              // Restore original TLS setting
-              if (shouldDisableTLSValidation) {
-                if (originalRejectUnauthorized !== undefined) {
-                  process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized
-                } else {
-                  delete process.env.NODE_TLS_REJECT_UNAUTHORIZED
-                }
-              }
               return { success: true }
             }
           } catch (retryError) {
@@ -187,14 +152,7 @@ export const connectToDB = async (): Promise<ConnectionResult> => {
             console.error('Retry without encryption also failed:', retryError)
           }
         }
-        // Restore original TLS setting on error
-        if (shouldDisableTLSValidation) {
-          if (originalRejectUnauthorized !== undefined) {
-            process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalRejectUnauthorized
-          } else {
-            delete process.env.NODE_TLS_REJECT_UNAUTHORIZED
-          }
-        }
+
         // Clean up on connection error
         if (dbPool) {
           try {
@@ -292,14 +250,9 @@ export const getConnection = async (): Promise<sql.ConnectionPool> => {
     connectionConfig.server.startsWith('127.0.0.1:')
 
   // On Windows, handle SSL/TLS certificate issues
+  // We rely on mssql options trustServerCertificate: true
   const originalRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED
-  const shouldDisableTLSValidation = isWindows && !process.env.NODE_TLS_REJECT_UNAUTHORIZED
-  if (shouldDisableTLSValidation) {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
-    console.log(
-      '⚠️  Windows detected: Temporarily disabling strict TLS validation for database connection'
-    )
-  }
+  const shouldDisableTLSValidation = false // Disabled global mutation
 
   // For localhost, we'll try with encryption first, then fallback to no encryption if TLS fails
   const shouldTryWithoutEncryption = isLocalhost

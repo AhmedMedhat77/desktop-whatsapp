@@ -123,6 +123,7 @@ export const QUERIES = {
    SELECT 
 Appointments.PatientID,
 Appointments.DoctorID,
+Appointments.BranchID,
 Appointments.TheDate AS AppointmentDate,
 Appointments.TheTime AS AppointmentTime,
 Doctors.ArbName AS DoctorArbName, 
@@ -144,6 +145,8 @@ ON p.PatientID = Appointments.PatientID
 AND p.BranchID = Appointments.BranchID 
 LEFT JOIN Clinic_PatientsTelNumbers as PatientNumber 
 ON p.PatientID = PatientNumber.PatientID
+AND p.BranchID = PatientNumber.BranchID
+WHERE PatientNumber.Number IS NOT NULL
     `)
   },
 
@@ -208,12 +211,15 @@ ON p.PatientID = PatientNumber.PatientID
     return await request.query(`
       SELECT 
         msg.*,
-        pt.Number
+        pt.Number,
+        LTRIM(RTRIM(REPLACE(REPLACE(pt.Number, ',', ''), ' ', ''))) AS CleanNumber
       FROM Appointment_Message_Table AS msg
       LEFT JOIN Clinic_PatientsTelNumbers AS pt
         ON msg.PatientID = pt.PatientID
       WHERE msg.InitialMessage = 0
-        AND pt.Number IS NOT NULL AND pt.Number != ''
+        AND pt.Number IS NOT NULL 
+        AND pt.Number != ''
+        AND LTRIM(RTRIM(REPLACE(REPLACE(pt.Number, ',', ''), ' ', ''))) != ''
       ORDER BY msg.AppointmentDate ASC, msg.AppointmentTime ASC
     `)
   },
@@ -226,12 +232,15 @@ ON p.PatientID = PatientNumber.PatientID
     return await request.query(`
       SELECT 
         msg.*,
-        pt.Number
+        pt.Number,
+        LTRIM(RTRIM(REPLACE(REPLACE(pt.Number, ',', ''), ' ', ''))) AS CleanNumber
       FROM Appointment_Message_Table AS msg
       LEFT JOIN Clinic_PatientsTelNumbers AS pt
         ON msg.PatientID = pt.PatientID
       WHERE msg.InitialMessage = 1 AND msg.ReminderMessage = 0
-        AND pt.Number IS NOT NULL AND pt.Number != ''
+        AND pt.Number IS NOT NULL 
+        AND pt.Number != ''
+        AND LTRIM(RTRIM(REPLACE(REPLACE(pt.Number, ',', ''), ' ', ''))) != ''
       ORDER BY msg.AppointmentDate ASC, msg.AppointmentTime ASC
     `)
   },

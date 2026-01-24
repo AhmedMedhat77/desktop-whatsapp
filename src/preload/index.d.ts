@@ -21,6 +21,7 @@ declare global {
       getWhatsappStatus: () => Promise<string>
       disconnectWhatsapp: () => Promise<{ success: boolean; error?: string }>
       deleteWhatsappAuth: () => Promise<{ success: boolean; error?: string }>
+      cleanupWhatsappSession: () => Promise<{ success: boolean; error?: string }>
       onWhatsappStatus: (
         callback: (
           event: Electron.IpcRendererEvent,

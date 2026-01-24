@@ -66,4 +66,5 @@ export interface AppointmentMessage {
   InitialMessage: number
   ReminderMessage: number
   Number: string
+  CleanNumber?: string // Cleaned phone number (commas and spaces removed)
 }

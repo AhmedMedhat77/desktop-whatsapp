@@ -37,9 +37,9 @@ const ConfigIndexRoute = ConfigIndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/config': typeof ConfigIndexRoute
-  '/messages': typeof MessagesIndexRoute
-  '/settings': typeof SettingsIndexRoute
+  '/config/': typeof ConfigIndexRoute
+  '/messages/': typeof MessagesIndexRoute
+  '/settings/': typeof SettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -56,7 +56,7 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/config' | '/messages' | '/settings'
+  fullPaths: '/' | '/config/' | '/messages/' | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to: '/' | '/config' | '/messages' | '/settings'
   id: '__root__' | '/' | '/config/' | '/messages/' | '/settings/'
@@ -81,21 +81,21 @@ declare module '@tanstack/react-router' {
     '/settings/': {
       id: '/settings/'
       path: '/settings'
-      fullPath: '/settings'
+      fullPath: '/settings/'
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/messages/': {
       id: '/messages/'
       path: '/messages'
-      fullPath: '/messages'
+      fullPath: '/messages/'
       preLoaderRoute: typeof MessagesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/config/': {
       id: '/config/'
       path: '/config'
-      fullPath: '/config'
+      fullPath: '/config/'
       preLoaderRoute: typeof ConfigIndexRouteImport
       parentRoute: typeof rootRouteImport
     }

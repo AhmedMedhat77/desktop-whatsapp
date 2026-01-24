@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron'
-import { execSync } from 'node:child_process'
+
 import fs from 'node:fs'
 import path from 'node:path'
 import { Client, LocalAuth } from 'whatsapp-web.js'
@@ -155,7 +155,9 @@ export async function sendMessageToPhone(
       })
     }
 
-    await whatsappClient.sendMessage(chatId, message)
+    // Send message with sendSeen: false to avoid markedUnread error
+    // WhatsApp Web changed their API and the sendSeen feature causes errors
+    await whatsappClient.sendMessage(chatId, message, { sendSeen: false })
     console.log(`✅ Message sent to ${number}`)
 
     // Notify renderer about successful message
@@ -193,40 +195,10 @@ export async function sendMessageToPhone(
   }
 }
 
-// Function to kill Chrome processes on Windows
-function killChromeProcesses(): void {
-  if (!isWindows) return
-
-  try {
-    // Kill Chrome processes
-    execSync('taskkill /f /im chrome.exe /t', { stdio: 'ignore' })
-    console.log('🧹 Killed Chrome processes')
-
-    // Kill Edge processes too
-    try {
-      execSync('taskkill /f /im msedge.exe /t', { stdio: 'ignore' })
-    } catch (error: unknown) {
-      // Ignore if no processes found
-      console.log('⚠️ Could not kill Edge processes:', error)
-    }
-  } catch (error) {
-    console.log('⚠️ Could not kill Chrome processes:', error)
-  }
-}
-
 // Function to clean up only lock files, not the entire session
 function cleanupLockFiles(): void {
   try {
-    // Kill Chrome processes first on Windows
-    if (isWindows) {
-      killChromeProcesses()
-      // Wait a bit for processes to fully terminate
-      setTimeout(() => {
-        cleanupLockFilesInternal()
-      }, 1000)
-    } else {
-      cleanupLockFilesInternal()
-    }
+    cleanupLockFilesInternal()
   } catch (error) {
     console.log('⚠️ Could not clean up lock files:', error)
   }
@@ -284,6 +256,20 @@ function cleanupLockFilesInternal(): void {
 // Clean up only lock files, preserve session data
 cleanupLockFiles()
 
+// Function to clean up session data on critical errors
+function cleanupSessionData(): void {
+  try {
+    const authDir = path.join(process.cwd(), '.wwebjs_auth')
+    if (fs.existsSync(authDir)) {
+      console.log('🧹 Cleaning up session data due to critical error...')
+      fs.rmSync(authDir, { recursive: true, force: true })
+      console.log('✅ Session data cleaned successfully')
+    }
+  } catch (error) {
+    console.error('❌ Failed to clean up session data:', error)
+  }
+}
+
 export const setMainWindow = (window: BrowserWindow | null): void => {
   mainWindow = window
 }
@@ -293,6 +279,11 @@ const sendStatusToRenderer = (status: WhatsAppStatus, data?: unknown): void => {
     mainWindow.webContents.send('whatsapp-status', { status, data })
   }
 }
+
+// Track initialization attempts
+let initAttempts = 0
+const MAX_INIT_ATTEMPTS = 3
+let initTimeout: NodeJS.Timeout | null = null
 
 export const initializeWhatsapp = async (): Promise<boolean> => {
   return new Promise((resolve, reject) => {
@@ -308,6 +299,9 @@ export const initializeWhatsapp = async (): Promise<boolean> => {
       reject(new Error('WhatsApp client is already initializing'))
       return
     }
+
+    initAttempts++
+    console.log(`🔄 WhatsApp initialization attempt ${initAttempts}/${MAX_INIT_ATTEMPTS}`)
 
     currentStatus = 'connecting'
     sendStatusToRenderer(currentStatus)
@@ -377,49 +371,172 @@ export const initializeWhatsapp = async (): Promise<boolean> => {
 
     // Ready event
     whatsappClient.on('ready', () => {
-      console.log('WhatsApp client is ready!')
+      console.log('✅ WhatsApp client is ready!')
+
+      // Clear timeout
+      if (initTimeout) {
+        clearTimeout(initTimeout)
+        initTimeout = null
+      }
+
+      // Reset attempt counter on success
+      initAttempts = 0
+
       currentStatus = 'ready'
       isReady = true
       sendStatusToRenderer(currentStatus)
+
       // Process any queued messages
       processMessageQueue().catch((error) => {
         console.error('Error processing message queue:', error)
       })
+
       resolve(true)
     })
 
     // Auth failure event
     whatsappClient.on('auth_failure', (error) => {
-      console.error('WhatsApp auth failure:', error)
+      console.error('❌ WhatsApp auth failure:', error)
       currentStatus = 'auth_failure'
       isReady = false
+
+      // Clear timeout if exists
+      if (initTimeout) {
+        clearTimeout(initTimeout)
+        initTimeout = null
+      }
+
       sendStatusToRenderer(currentStatus, { error: String(error) })
-      whatsappClient = null
+
+      // Clean up client
+      if (whatsappClient) {
+        whatsappClient.destroy().catch(() => {})
+        whatsappClient = null
+      }
+
+      // On auth failure, clean up session data to force fresh login
+      console.log('🧹 Cleaning up session data after auth failure...')
+      cleanupSessionData()
+
       reject(error)
     })
 
     // Disconnected event
     whatsappClient.on('disconnected', (reason) => {
-      console.log('WhatsApp disconnected:', reason)
+      console.log('⚠️ WhatsApp disconnected:', reason)
       currentStatus = reason === 'LOGOUT' ? 'disconnected' : 'disconnected_error'
       isReady = false
+
+      // Clear timeout if exists
+      if (initTimeout) {
+        clearTimeout(initTimeout)
+        initTimeout = null
+      }
+
       sendStatusToRenderer(currentStatus, { reason })
-      whatsappClient = null
+
+      // Clean up client
+      if (whatsappClient) {
+        whatsappClient.destroy().catch(() => {})
+        whatsappClient = null
+      }
+
+      // If disconnected due to LOGOUT, clean session
+      if (reason === 'LOGOUT') {
+        console.log('🧹 Cleaning up session data after logout...')
+        cleanupSessionData()
+      }
     })
 
     // Loading screen event
     whatsappClient.on('loading_screen', (percent, message) => {
-      console.log(`Loading: ${percent}% - ${message}`)
+      console.log(`📥 Loading: ${percent}% - ${message}`)
       sendStatusToRenderer('connecting', { percent, message })
     })
 
-    // Initialize the client
+    // Remote session saved event (good indicator of progress)
+    whatsappClient.on('remote_session_saved', () => {
+      console.log('💾 Remote session saved')
+    })
+
+    // Add initialization timeout (5 minutes)
+    initTimeout = setTimeout(
+      () => {
+        console.error('⏱️ WhatsApp initialization timeout (5 minutes)')
+
+        if (whatsappClient && currentStatus !== 'ready') {
+          currentStatus = 'disconnected_error'
+          isReady = false
+
+          const timeoutError = new Error(
+            'WhatsApp initialization timeout - taking too long to connect'
+          )
+          sendStatusToRenderer(currentStatus, { error: timeoutError.message })
+
+          // Destroy client and clean up
+          whatsappClient.destroy().catch(() => {})
+          whatsappClient = null
+
+          // On timeout, suggest cleaning session
+          if (initAttempts >= MAX_INIT_ATTEMPTS) {
+            console.log('🧹 Max attempts reached, cleaning up session data...')
+            cleanupSessionData()
+            initAttempts = 0 // Reset counter
+          }
+
+          reject(timeoutError)
+        }
+      },
+      5 * 60 * 1000
+    ) // 5 minutes
+
+    // Initialize the client with enhanced error handling
     whatsappClient.initialize().catch((error) => {
-      console.error('Error initializing WhatsApp client:', error)
+      console.error('❌ Error initializing WhatsApp client:', error)
+
+      // Clear timeout
+      if (initTimeout) {
+        clearTimeout(initTimeout)
+        initTimeout = null
+      }
+
       currentStatus = 'disconnected_error'
       isReady = false
-      sendStatusToRenderer(currentStatus, { error: error.message || String(error) })
-      whatsappClient = null
+
+      // Check if error is related to property access (like markedUnread)
+      const errorMessage = error.message || String(error)
+      const isPropertyError =
+        errorMessage.includes('Cannot read propert') ||
+        errorMessage.includes('undefined') ||
+        errorMessage.includes('null')
+
+      if (isPropertyError) {
+        console.error('🔍 Detected property access error - likely WhatsApp Web API change')
+        console.log('💡 Suggestion: Try clearing session data and re-authenticating')
+
+        // If we've tried multiple times, auto-clean session
+        if (initAttempts >= MAX_INIT_ATTEMPTS) {
+          console.log('🧹 Auto-cleaning session data after repeated property errors...')
+          cleanupSessionData()
+          initAttempts = 0 // Reset counter
+        }
+      }
+
+      sendStatusToRenderer(currentStatus, {
+        error: errorMessage,
+        suggestion: isPropertyError
+          ? 'WhatsApp Web may have updated. Try clearing session data.'
+          : undefined,
+        attempts: initAttempts,
+        maxAttempts: MAX_INIT_ATTEMPTS
+      })
+
+      // Clean up client
+      if (whatsappClient) {
+        whatsappClient.destroy().catch(() => {})
+        whatsappClient = null
+      }
+
       reject(error)
     })
   })
@@ -436,17 +553,32 @@ export const getWhatsAppClient = (): Client | null => {
 export const disconnectWhatsApp = async (): Promise<void> => {
   if (whatsappClient) {
     try {
+      // Clear timeout if exists
+      if (initTimeout) {
+        clearTimeout(initTimeout)
+        initTimeout = null
+      }
+
+      console.log('🔌 Disconnecting WhatsApp client...')
       await whatsappClient.destroy()
       whatsappClient = null
       isReady = false
       currentStatus = 'disconnected'
       sendStatusToRenderer(currentStatus)
+      console.log('✅ WhatsApp client disconnected successfully')
     } catch (error) {
-      console.error('Error disconnecting WhatsApp:', error)
+      console.error('❌ Error disconnecting WhatsApp:', error)
       whatsappClient = null
       isReady = false
       currentStatus = 'disconnected'
       sendStatusToRenderer(currentStatus)
     }
   }
+}
+
+// Export function to manually clean session (can be called from main process)
+export const cleanupWhatsAppSession = (): void => {
+  console.log('🧹 Manual session cleanup requested')
+  cleanupSessionData()
+  initAttempts = 0 // Reset attempt counter
 }

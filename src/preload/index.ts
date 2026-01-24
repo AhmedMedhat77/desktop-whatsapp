@@ -13,6 +13,7 @@ const api = {
   getWhatsappStatus: () => ipcRenderer.invoke('get-whatsapp-status'),
   disconnectWhatsapp: () => ipcRenderer.invoke('disconnect-whatsapp'),
   deleteWhatsappAuth: () => ipcRenderer.invoke('delete-whatsapp-auth'),
+  cleanupWhatsappSession: () => ipcRenderer.invoke('cleanup-whatsapp-session'),
   onWhatsappStatus: (
     callback: (event: Electron.IpcRendererEvent, data: { status: string; data?: unknown }) => void
   ) => {

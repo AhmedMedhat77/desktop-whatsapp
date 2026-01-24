@@ -171,8 +171,9 @@ scheduleJob('*/30 * * * * *', async () => {
               continue
             }
 
-            // Check if phone number exists (convert to string first in case it's a number)
-            const phoneNumber = String(reminder.Number || '').trim()
+            // Use CleanNumber if available (removes commas and spaces), otherwise fallback to Number
+            const rawNumber = reminder.CleanNumber || reminder.Number || ''
+            const phoneNumber = String(rawNumber).trim()
             if (!phoneNumber) {
               console.warn(`⚠️  Skipping appointment ${reminder.ID}: No phone number`)
               continue
@@ -281,8 +282,9 @@ scheduleJob('*/30 * * * * *', async () => {
               continue
             }
 
-            // Check if phone number exists (convert to string first in case it's a number)
-            const phoneNumber = String(reminder.Number || '').trim()
+            // Use CleanNumber if available (removes commas and spaces), otherwise fallback to Number
+            const rawNumber = reminder.CleanNumber || reminder.Number || ''
+            const phoneNumber = String(rawNumber).trim()
             if (!phoneNumber) {
               console.warn(`⚠️  Skipping reminder for appointment ${reminder.ID}: No phone number`)
               continue

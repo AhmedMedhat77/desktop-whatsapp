@@ -45,6 +45,8 @@ function HomeScreen(): React.ReactNode {
     deleteCache: false
   })
   const [deleteCacheMessage, setDeleteCacheMessage] = useState<string | null>(null)
+  const [whatsappError, setWhatsappError] = useState<string | null>(null)
+  const [whatsappSuggestion, setWhatsappSuggestion] = useState<string | null>(null)
   const { toasts, removeToast, success, error: showError } = useToast()
 
   const checkHealth = useCallback(async (): Promise<void> => {
@@ -161,16 +163,25 @@ function HomeScreen(): React.ReactNode {
 
   const handleInitializeWhatsapp = async (): Promise<void> => {
     setIsLoading((prev) => ({ ...prev, whatsapp: true }))
+    setWhatsappError(null)
+    setWhatsappSuggestion(null)
     try {
       const response = await window.api.initializeWhatsapp()
       if (response.success) {
         setWhatsappStatus(response.status as WhatsAppStatus)
       } else {
         setWhatsappStatus('auth_failure')
+        if (response.error) {
+          setWhatsappError(response.error)
+          showError(response.error)
+        }
       }
     } catch (error) {
       console.error('Error initializing WhatsApp:', error)
       setWhatsappStatus('disconnected_error')
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      setWhatsappError(errorMsg)
+      showError(errorMsg)
     } finally {
       setIsLoading((prev) => ({ ...prev, whatsapp: false }))
     }
@@ -212,6 +223,8 @@ function HomeScreen(): React.ReactNode {
         setDeleteCacheMessage('Cache deleted successfully!')
         setWhatsappStatus('disconnected')
         setWhatsappQrCode(null)
+        setWhatsappError(null)
+        setWhatsappSuggestion(null)
         success('WhatsApp cache deleted successfully!')
         setTimeout(() => setDeleteCacheMessage(null), 5000)
       } else {
@@ -224,6 +237,41 @@ function HomeScreen(): React.ReactNode {
       console.error('Error deleting cache:', error)
       setDeleteCacheMessage('Error deleting cache. Please restart the app and try again.')
       setTimeout(() => setDeleteCacheMessage(null), 5000)
+    } finally {
+      setIsLoading((prev) => ({ ...prev, deleteCache: false }))
+    }
+  }
+
+  const handleCleanupSession = async (): Promise<void> => {
+    if (
+      !confirm(
+        'Are you sure you want to clean up the WhatsApp session? This will delete all session data and require re-authentication.'
+      )
+    ) {
+      return
+    }
+
+    if (!window.api || typeof window.api.cleanupWhatsappSession !== 'function') {
+      showError('Cleanup session function not available. Please restart the app.')
+      return
+    }
+
+    setIsLoading((prev) => ({ ...prev, deleteCache: true }))
+    try {
+      const response = await window.api.cleanupWhatsappSession()
+      if (response.success) {
+        setWhatsappStatus('disconnected')
+        setWhatsappQrCode(null)
+        setWhatsappError(null)
+        setWhatsappSuggestion(null)
+        success('WhatsApp session cleaned successfully! You can now reconnect.')
+      } else {
+        const errorMsg = response.error || 'Failed to cleanup session'
+        showError(errorMsg)
+      }
+    } catch (error) {
+      console.error('Error cleaning up session:', error)
+      showError('Error cleaning up session. Please restart the app and try again.')
     } finally {
       setIsLoading((prev) => ({ ...prev, deleteCache: false }))
     }
@@ -264,8 +312,22 @@ function HomeScreen(): React.ReactNode {
 
     const cleanup = window.api.onWhatsappStatus((_event, data) => {
       setWhatsappStatus(data.status as WhatsAppStatus)
-      if (data.data?.qr) {
-        setWhatsappQrCode(data.data.qr)
+
+      // Handle error data with suggestions
+      if (data.data && typeof data.data === 'object') {
+        if ('qr' in data.data && data.data.qr) {
+          setWhatsappQrCode(data.data.qr as string)
+        } else if (data.status === 'ready' || data.status === 'disconnected') {
+          setWhatsappQrCode(null)
+        }
+
+        // Check for error and suggestion
+        if ('error' in data.data && data.data.error) {
+          setWhatsappError(data.data.error as string)
+        }
+        if ('suggestion' in data.data && data.data.suggestion) {
+          setWhatsappSuggestion(data.data.suggestion as string)
+        }
       } else if (data.status === 'ready' || data.status === 'disconnected') {
         setWhatsappQrCode(null)
       }
@@ -404,15 +466,27 @@ function HomeScreen(): React.ReactNode {
             )}
 
             {/* Delete Cache Button */}
-            <Button
-              type="button"
-              onClick={handleDeleteCache}
-              isLoading={isLoading.deleteCache}
-              className="w-full bg-orange-500 hover:bg-orange-600 flex items-center justify-center gap-2"
-            >
-              <Trash2 className="w-4 h-4" />
-              Delete WhatsApp Auth & Cache
-            </Button>
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                onClick={handleDeleteCache}
+                isLoading={isLoading.deleteCache}
+                className="bg-orange-500 hover:bg-orange-600 flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Auth Cache
+              </Button>
+
+              <Button
+                type="button"
+                onClick={handleCleanupSession}
+                isLoading={isLoading.deleteCache}
+                className="bg-yellow-500 hover:bg-yellow-600 flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Clean Session
+              </Button>
+            </div>
 
             {/* Delete Cache Message */}
             {deleteCacheMessage && (
@@ -430,6 +504,33 @@ function HomeScreen(): React.ReactNode {
                     <XCircle className="w-5 h-5 text-red-600" />
                   )}
                   <p className="text-sm font-medium">{deleteCacheMessage}</p>
+                </div>
+              </div>
+            )}
+
+            {/* WhatsApp Error Display */}
+            {whatsappError && (
+              <div className="p-4 bg-red-50 border-2 border-red-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-red-900">Connection Error</p>
+                    <p className="text-sm text-red-700 mt-1">{whatsappError}</p>
+                    {whatsappSuggestion && (
+                      <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                        <p className="text-xs font-medium text-yellow-900">💡 Suggestion:</p>
+                        <p className="text-xs text-yellow-800 mt-1">{whatsappSuggestion}</p>
+                      </div>
+                    )}
+                    <Button
+                      type="button"
+                      onClick={handleCleanupSession}
+                      className="mt-3 bg-yellow-500 hover:bg-yellow-600 text-sm flex items-center gap-2"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Clean Session & Retry
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
